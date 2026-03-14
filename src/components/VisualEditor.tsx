@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { TimelineSegment, SegmentConfig } from '../timelineParser';
-import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight } from 'lucide-react';
+import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2 } from 'lucide-react';
+import { transcribeAudio } from '../services/audioAnalysisService';
 
 interface VisualEditorProps {
   segments: TimelineSegment[];
@@ -24,6 +25,18 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateText, mo
   const [isAdvancedTextOpen, setIsAdvancedTextOpen] = useState(false);
   const [isAdvancedTextAnimOpen, setIsAdvancedTextAnimOpen] = useState(false);
   const [isAdvancedAudioOpen, setIsAdvancedAudioOpen] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+
+  const handleTranscribe = async () => {
+    if (!seg.config.audioUrl) return;
+    setIsTranscribing(true);
+    try {
+      const text = await transcribeAudio(seg.config.audioUrl);
+      updateText(index, text);
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
 
   return (
     <div className="bg-zinc-950 border border-zinc-800 rounded-xl p-4 flex flex-col gap-4 relative group">
@@ -331,6 +344,14 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateText, mo
                         onChange={(e) => updateConfig(index, 'audioUrl', e.target.value)} 
                         className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" 
                       />
+                      <button
+                        onClick={handleTranscribe}
+                        disabled={!seg.config.audioUrl || isTranscribing}
+                        className="p-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed border border-zinc-700 rounded-lg text-emerald-400 transition-colors"
+                        title="Transcribe Audio"
+                      >
+                        {isTranscribing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                      </button>
                       <label className="flex items-center justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg cursor-pointer transition-colors text-zinc-300">
                         <Upload size={16} />
                         <input 

@@ -9,6 +9,8 @@ import { SceneManager } from './SceneManager';
 import { audioEngine } from './audioEngine';
 import { DEFAULT_MARKDOWN, parseTimeline, serializeTimeline, TimelineSegment } from './timelineParser';
 import { VisualEditor } from './components/VisualEditor';
+import { AudioAnalysisFlyout } from './components/AudioAnalysisFlyout';
+import { Wand2 } from 'lucide-react';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -23,6 +25,7 @@ export default function App() {
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [copied, setCopied] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
+  const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -229,6 +232,13 @@ export default function App() {
         <div className="flex-1 flex flex-col overflow-hidden">
           <div className="flex border-b border-zinc-800 bg-zinc-900">
             <button 
+              onClick={() => setIsAnalysisOpen(true)}
+              className="px-4 py-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/50 transition-colors border-r border-zinc-800"
+              title="Import & Analyze Audio"
+            >
+              <Wand2 size={18} />
+            </button>
+            <button 
               onClick={() => setActiveTab('visual')}
               className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'visual' ? 'text-emerald-400 border-b-2 border-emerald-400 bg-zinc-800/50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/30'}`}
             >
@@ -347,7 +357,15 @@ export default function App() {
           </div>
         )}
 
-        {/* Help Pane */}
+        <AudioAnalysisFlyout 
+        isOpen={isAnalysisOpen} 
+        onClose={() => setIsAnalysisOpen(false)} 
+        onAnalysisComplete={(newSegments) => {
+          setMarkdown(serializeTimeline(newSegments));
+        }} 
+      />
+
+      {/* Help Pane */}
         <div className={`absolute top-0 right-0 h-full w-80 bg-zinc-900 border-l border-zinc-800 shadow-2xl z-50 transform transition-transform duration-300 flex flex-col ${isHelpOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
             <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2"><HelpCircle size={18} className="text-emerald-400"/> Syntax & Options</h2>
