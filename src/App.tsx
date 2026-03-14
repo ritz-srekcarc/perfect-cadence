@@ -20,7 +20,7 @@ export default function App() {
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
-  const [mode, setMode] = useState<'edit' | 'view'>('edit');
+  const [mode, setMode] = useState<'edit' | 'view'>('view');
   const [activeTab, setActiveTab] = useState<'markdown' | 'visual'>('visual');
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [copied, setCopied] = useState(false);
@@ -54,12 +54,21 @@ export default function App() {
     setMarkdown(initialMarkdown);
   }, []);
 
-  const handleShare = () => {
+  const encodeMarkdown = (md: string) => {
     try {
-      const encoded = btoa(encodeURIComponent(markdown).replace(/%([0-9A-F]{2})/g,
+      return btoa(encodeURIComponent(md).replace(/%([0-9A-F]{2})/g,
           function toSolidBytes(match, p1) {
               return String.fromCharCode(parseInt(p1, 16));
       }));
+    } catch (e) {
+      console.error("Failed to encode markdown", e);
+      return "";
+    }
+  };
+
+  const handleShare = () => {
+    try {
+      const encoded = encodeMarkdown(markdown);
       const url = new URL(window.location.href);
       url.searchParams.set('m', encoded);
       window.history.replaceState({}, '', url.toString());
@@ -290,26 +299,68 @@ export default function App() {
         {/* Top Bar for View Mode */}
         {mode === 'view' && (
           <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-20 bg-gradient-to-b from-black/80 to-transparent">
-            <h1 className="text-xl font-semibold tracking-tight text-emerald-400 drop-shadow-md">Perfect Cadence</h1>
-            <div className="flex gap-2">
-              <button 
-                onClick={() => setIsHelpOpen(true)}
-                className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
-                title="Help & Syntax"
-              >
-                <HelpCircle size={16} />
-              </button>
+            {!isPlaying && (
+              <>
+                <h1 className="text-xl font-semibold tracking-tight text-emerald-400 drop-shadow-md">Perfect Cadence</h1>
+                
+                {/* Pill Menu */}
+                <div className="flex bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 rounded-full px-1 py-1 shadow-lg">
+                  <a 
+                    href={`?m=${encodeMarkdown(DEFAULT_MARKDOWN)}`}
+                    className="px-4 py-1.5 text-xs font-medium text-zinc-300 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                  >
+                    Default
+                  </a>
+                  <a 
+                    href={`?m=${encodeMarkdown("# Deep Focus\nFocus your mind on the center.\n\n```config\nduration: 30\npattern: spiral\npatternType: hypnotic\npatternSpeed: 0.5\npatternColor1: #000000\npatternColor2: #00ff88\nbinaural: focus\nmetronome: 0\n```")}`}
+                    className="px-4 py-1.5 text-xs font-medium text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                  >
+                    Focus
+                  </a>
+                  <a 
+                    href={`?m=${encodeMarkdown("# Cosmic Journey\nDrifting through the stars.\n\n```config\nduration: 45\npattern: particles\npatternType: galaxy\npatternSpeed: 0.2\ncamera: orbit\ncameraSpeed: 0.1\nbinaural: sleep\n```")}`}
+                    className="px-4 py-1.5 text-xs font-medium text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                  >
+                    Cosmos
+                  </a>
+                  <a 
+                    href={`?m=${encodeMarkdown("# Sacred Geometry\nThe patterns of the universe.\n\n```config\nduration: 40\npattern: mandala\npatternType: sacred_geometry\npatternComplexity: 10\npatternColor1: #ff00ff\npatternColor2: #00ffff\nbinaural: relax\n```")}`}
+                    className="px-4 py-1.5 text-xs font-medium text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                  >
+                    Geometry
+                  </a>
+                  <a 
+                    href={`?m=${encodeMarkdown("# Energy Pulse\nFeel the rhythm.\n\n```config\nduration: 20\npattern: pulse\npatternType: vortex\npatternSpeed: 2.0\nmetronome: 120\nbinaural: focus\n```")}`}
+                    className="px-4 py-1.5 text-xs font-medium text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                  >
+                    Energy
+                  </a>
+                </div>
+              </>
+            )}
+            <div className="flex gap-2 ml-auto">
+              {!isPlaying && (
+                <button 
+                  onClick={() => setIsHelpOpen(true)}
+                  className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
+                  title="Help & Syntax"
+                >
+                  <HelpCircle size={16} />
+                </button>
+              )}
               <button 
                 onClick={() => setMode('edit')}
                 className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
+                title="Edit Timeline"
               >
-                <Edit3 size={16} /> Edit Timeline
+                <Edit3 size={16} /> {!isPlaying && "Edit Timeline"}
               </button>
               <button 
                 onClick={isPlaying ? handleStop : handlePlay}
                 className={`p-2 rounded-lg flex items-center gap-2 text-sm font-medium backdrop-blur-sm transition-colors ${isPlaying ? 'bg-red-500/80 text-white hover:bg-red-600' : 'bg-emerald-500/80 text-white hover:bg-emerald-600'}`}
+                title={isPlaying ? "Stop" : "Play"}
               >
-                {isPlaying ? <><Square size={16} /> Stop</> : <><Play size={16} /> Play</>}
+                {isPlaying ? <Square size={16} /> : <><Play size={16} /> Play</>}
               </button>
             </div>
           </div>
@@ -334,24 +385,23 @@ export default function App() {
 
         {/* Playback Progress Overlay */}
         {isPlaying && segments.length > 0 && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-20">
-            <div className="bg-zinc-900/80 backdrop-blur-md border border-zinc-800 rounded-2xl p-4 shadow-2xl">
-              <div className="flex justify-between text-xs text-zinc-400 mb-2 font-mono">
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 w-full max-w-md px-4 z-20 transition-opacity duration-500 opacity-0 hover:opacity-100">
+            <div className="bg-zinc-900/40 backdrop-blur-sm border border-zinc-800/50 rounded-2xl p-4 shadow-2xl">
+              <div className="flex justify-between text-xs text-zinc-400/70 mb-2 font-mono">
                 <span>Segment {currentSegmentIndex + 1} / {segments.length}</span>
                 <span>{Math.floor(totalElapsed)}s / {Math.floor(totalDuration)}s</span>
               </div>
               <div 
-                className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden cursor-pointer relative"
+                className="w-full h-2 bg-zinc-800/50 rounded-full overflow-hidden cursor-pointer relative"
                 onClick={handleScrub}
               >
                 <div 
-                  className="h-full bg-emerald-500 transition-all duration-100 ease-linear"
+                  className="h-full bg-emerald-500/70 transition-all duration-100 ease-linear"
                   style={{ width: `${(totalElapsed / totalDuration) * 100}%` }}
                 />
               </div>
-              <div className="mt-3 text-center text-sm font-medium text-zinc-300">
-                Pattern: <span className="text-emerald-400">{segments[currentSegmentIndex].config.pattern}</span> | 
-                Audio: <span className="text-emerald-400">{segments[currentSegmentIndex].config.binaural}</span>
+              <div className="mt-3 text-center text-[10px] font-medium text-zinc-500/70 uppercase tracking-widest">
+                {segments[currentSegmentIndex].config.pattern} • {segments[currentSegmentIndex].config.binaural}
               </div>
             </div>
           </div>
@@ -374,6 +424,18 @@ export default function App() {
             </button>
           </div>
           <div className="p-6 overflow-y-auto flex-1 prose prose-invert prose-sm prose-emerald max-w-none">
+            <div className="mb-6 p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
+              <p className="text-zinc-300 text-xs mb-2">Want to learn more or contribute to the project?</p>
+              <a 
+                href="https://github.com/ritz-srekcarc/perfect-cadence" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-medium no-underline"
+              >
+                View on GitHub →
+              </a>
+            </div>
+
             <h3 className="text-zinc-100 mt-0">Timeline Syntax</h3>
             <p className="text-zinc-400">Separate segments with <code>---</code>.</p>
             <p className="text-zinc-400">Configure a segment using a <code>```config</code> block. If omitted, it inherits the previous segment's config.</p>

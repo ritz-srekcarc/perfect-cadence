@@ -1,20 +1,36 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Perfect Cadence
 
-# Run and deploy your AI Studio app
+Perfect Cadence is a professional-grade hypnotic visualizer and meditation tool designed to create immersive, synchronized experiences. It combines advanced 3D patterns, binaural audio, and AI-driven analysis to help users achieve specific mental states.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/6e5a5943-cb8b-490d-8935-0deae21b0cbc
+### 🌀 Immersive Visuals
+- **Dynamic Patterns:** Choose from a variety of hypnotic patterns including Spiral, Tunnel, Rings, Particles, Mandala, Kaleidoscope, Waves, and Pulse.
+- **Customizable Geometry:** Adjust pattern type (Galaxy, Sphere, Vortex, Sacred Geometry), speed, scale, and complexity.
+- **Advanced Camera:** Control the perspective with Static, Orbit, Fly, and Pan modes, including FOV and target adjustments.
 
-## Run Locally
+### 🎧 Synchronized Audio
+- **Binaural Beats:** Integrated brainwave entrainment with presets for Focus, Relax, and Sleep, or fully custom frequency control.
+- **Metronome:** Precise BPM tracking to anchor the experience.
+- **Custom Audio Support:** Upload or link external audio files for each segment.
 
-**Prerequisites:**  Node.js
+### 🤖 AI-Powered Analysis
+- **Global Audio Importer:** Automatically generate a full visual timeline from an audio file. The system uses in-browser silence detection for segmentation and Gemini AI for transcription and sentiment analysis.
+- **Per-Segment Transcription:** Quickly transcribe custom audio clips directly into the segment text.
 
+### 📝 Timeline System
+- **Markdown-Based:** Define your experience using a simple Markdown syntax with `---` separators.
+- **Visual Editor:** A user-friendly interface to manage segments, colors, patterns, and audio without writing code.
+- **Text Animations:** Bring your words to life with effects like Zoom, Fade, Float, Warp, Prism, and the high-energy Glitch animation.
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+## Getting Started
+
+1. **Visual Editor:** Use the tabs to switch between the Visual Editor and the raw Markdown timeline.
+2. **Import Audio:** Click the 🪄 (Wand) icon to import and analyze a full audio track.
+3. **Play:** Hit the Play button to start the immersive experience.
+4. **Share:** Use the Share button to generate a link to your current creation.
+
+## More Information
+
+- [Contributing Guidelines](CONTRIBUTING.md)
+- [License Information](LICENSE.md)
