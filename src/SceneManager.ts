@@ -1,4 +1,4 @@
-import { Engine, Scene, Vector3, HemisphericLight, ArcRotateCamera, MeshBuilder, Mesh, StandardMaterial, Color3, Texture, DynamicTexture, WebXRDefaultExperience, WebXRState, SceneLoader, TransformNode, ParticleSystem, ShaderMaterial, Effect, VertexBuffer, VideoTexture } from '@babylonjs/core';
+import { Engine, Scene, Vector3, HemisphericLight, ArcRotateCamera, MeshBuilder, Mesh, StandardMaterial, Color3, Texture, DynamicTexture, WebXRDefaultExperience, WebXRState, SceneLoader, TransformNode, ParticleSystem, ShaderMaterial, Effect, VertexBuffer, VideoTexture, WebXRSessionManager } from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import { SegmentConfig, MediaItem } from './timelineParser';
 
@@ -76,6 +76,12 @@ export class SceneManager {
   }
 
   private async initXR() {
+    // Check if WebXR is supported before attempting to initialize
+    const isSupported = await WebXRSessionManager.IsSessionSupportedAsync('immersive-vr');
+    if (!isSupported) {
+      return;
+    }
+
     try {
       this.xr = await this.scene.createDefaultXRExperienceAsync({
         uiOptions: {
@@ -380,9 +386,14 @@ export class SceneManager {
       this.applyMarkdownStyling(this.textBlock, text, baseSize);
     }
     if (this.auxTextBlock && this.auxTextPlane) {
-      if (auxText) {
+      const hasAuxContent = !!auxText || (wordList?.layer === 'aux');
+      if (hasAuxContent) {
         const baseSize = this.currentConfig?.auxSize ?? 100;
-        this.applyMarkdownStyling(this.auxTextBlock, auxText, baseSize);
+        if (auxText) {
+          this.applyMarkdownStyling(this.auxTextBlock, auxText, baseSize);
+        } else {
+          this.auxTextBlock.text = "";
+        }
         this.auxTextPlane.isVisible = true;
       } else {
         this.auxTextBlock.text = "";
@@ -392,24 +403,42 @@ export class SceneManager {
   }
 
   public updateMedia(media: MediaItem[]) {
-    if (!this.textBackground) return;
+    if (!this.textBackground || !this.auxTextBackground) return;
     // Clear old media
     this.mediaControls.forEach(c => c.dispose());
     this.mediaControls = [];
     this.mediaMeshes.forEach(m => m.dispose());
     this.mediaMeshes = [];
 
+    const hasAuxMedia = media.some(m => m.layer === 'aux');
+    if (hasAuxMedia && this.auxTextPlane) {
+      this.auxTextPlane.isVisible = true;
+    }
+
     // Add new media
     media.forEach((m, i) => {
       if (m.type === 'image') {
         const img = new GUI.Image("media", m.url);
         img.alpha = m.opacity;
-        this.textBackground!.addControl(img);
+        if (m.layer === 'aux') {
+          this.auxTextBackground!.addControl(img);
+        } else {
+          this.textBackground!.addControl(img);
+        }
         this.mediaControls.push(img);
       } else if (m.type === 'video') {
-        const plane = MeshBuilder.CreatePlane("video", { width: 10, height: 5, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
-        plane.parent = this.camera;
-        plane.position = new Vector3(0, 0, 8 + i * 0.1); // Offset slightly
+        const plane = MeshBuilder.CreatePlane("video", { width: 20, height: 10, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+        
+        // Parent to the correct text plane to inherit its behavior (world space vs camera locked)
+        if (m.layer === 'aux') {
+          plane.parent = this.auxTextPlane;
+        } else {
+          plane.parent = this.textPlane;
+        }
+        
+        // Position slightly behind the text plane (Z is local forward, so negative is behind)
+        plane.position = new Vector3(0, 0, -0.01 - i * 0.01); 
+        
         const mat = new StandardMaterial("videoMat", this.scene);
         const videoTexture = new VideoTexture("videoTex", m.url, this.scene, false, false, VideoTexture.TRILINEAR_SAMPLINGMODE, {
           autoPlay: true,
@@ -417,6 +446,27 @@ export class SceneManager {
           loop: true,
           muted: m.volume === 0
         });
+        
+        if (videoTexture.video) {
+          videoTexture.video.crossOrigin = "anonymous";
+        }
+        
+        // Ensure video plays and handle potential autoplay blocks
+        const playVideo = () => {
+          if (videoTexture.video) {
+            videoTexture.video.play().catch(e => {
+              console.warn("Video autoplay blocked, retrying muted:", e);
+              videoTexture.video.muted = true;
+              videoTexture.video.play().catch(err => console.error("Video failed to play even when muted:", err));
+            });
+          }
+        };
+
+        // Try playing immediately
+        playVideo();
+        
+        // Also try playing on next frame to ensure engine is ready
+        setTimeout(playVideo, 100);
         
         if (m.volume !== undefined) {
           videoTexture.video.volume = m.volume;

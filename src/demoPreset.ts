@@ -173,10 +173,10 @@ cameraRadius: 30
 ---
 
 ## Segment 11
-![100,100](https://www.w3schools.com/html/mov_bbb.mp4)
+![100,100](https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)
 
 \`\`\`config
-duration: 0.5
+duration: 4.5
 pattern: vortex
 camera: orbit
 patternSpeed: 1.26
@@ -258,7 +258,7 @@ cameraRadius: 30
 ---
 
 ## Segment 16
-![100,100](https://www.w3schools.com/html/mov_bbb.mp4)
+![100,100](https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)
 
 \`\`\`config
 duration: 3.1
@@ -326,7 +326,7 @@ cameraRadius: 30
 ---
 
 ## Segment 20
-![100,100](https://www.w3schools.com/html/mov_bbb.mp4)
+![100,100](https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)
 
 \`\`\`config
 duration: 1.7
@@ -445,7 +445,7 @@ cameraRadius: 30
 ---
 
 ## Segment 27
-![100,100](https://www.w3schools.com/html/mov_bbb.mp4)
+![100,100](https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)
 
 \`\`\`config
 duration: 2.7
@@ -479,7 +479,7 @@ cameraRadius: 30
 ---
 
 ## Segment 29
-![100,100](https://www.w3schools.com/html/mov_bbb.mp4)
+![100,100](https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)
 
 \`\`\`config
 duration: 4.2
@@ -598,7 +598,7 @@ cameraRadius: 30
 ---
 
 ## Segment 36
-![100,100](https://www.w3schools.com/html/mov_bbb.mp4)
+![100,100](https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)
 
 \`\`\`config
 duration: 3.7
@@ -785,7 +785,7 @@ cameraRadius: 30
 ---
 
 ## Segment 47
-![100,100](https://www.w3schools.com/html/mov_bbb.mp4)
+![100,100](https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4)
 
 \`\`\`config
 duration: 1.3

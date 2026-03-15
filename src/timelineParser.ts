@@ -50,6 +50,7 @@ export interface MediaItem {
   url: string;
   opacity: number;
   volume?: number;
+  layer: 'main' | 'aux';
 }
 
 export interface WordList {
@@ -78,90 +79,24 @@ export interface TimelineSegment {
 }
 
 export const DEFAULT_MARKDOWN = `\`\`\`config
-duration: 8
-pattern: mandala
-patternType: breathing
-patternComplexity: 1.5
-patternColor1: #00ffcc
-camera: orbit
-cameraSpeed: 0.5
-cameraRadius: 30
-textSize: 20
-textDistance: 25
-auxSize: 15
-auxDistance: 25
-textAnimType: zoom
-textAnimSpeed: 0.5
-binaural: focus
-metronome: 60
-\`\`\`
-
-# HypnoFlow Pro
-Experience the ultimate synchronization.
-Breathe with the pulse.
-
----
-
-\`\`\`config
 duration: 10
-pattern: kaleidoscope
-patternComplexity: 2
-patternColor1: #ff00ff
-camera: fly
-cameraSpeed: 2.0
-cameraFov: 120
-textAnimType: glitch
-textAnimIntensity: 2.0
-binaural: relax
-metronome: 120
-\`\`\`
-
-# Warp Speed
-Diving into the geometric void.
-Reality is shifting.
-
----
-
-\`\`\`config
-duration: 12
-pattern: spiral
-patternType: vortex
-patternScale: 2.0
-patternColor1: #ffff00
-camera: pan
-cameraSpeed: 1.5
-textAnimType: prism
-textAnimSpeed: 2.0
-binaural: custom
-carrierFreq: 100
-beatFreq: 4
+pattern: particles
+patternType: default
+patternComplexity: 1.0
+patternColor1: #ffffff
+camera: orbit
+cameraSpeed: 0.2
+cameraRadius: 30
+textSize: 24
+textDistance: 20
+textAnimType: fade
+binaural: focus
 metronome: 0
 \`\`\`
 
-# Deep Theta
-Resonating at the frequency of rest.
-Your mind is clear.
-
----
-
-\`\`\`config
-duration: 15
-pattern: waves
-patternComplexity: 1.2
-patternColor1: #0088ff
-camera: orbit
-cameraSpeed: 0.2
-cameraHeight: 0.5
-textFont: serif
-textAnimType: float
-textShading: true
-textBackdrop: true
-binaural: sleep
-\`\`\`
-
-# Ocean of Calm
-Drifting away on digital waves.
-Peace is here.
+# Perfect Cadence
+Ready to begin.
+Load a preset or start typing.
 `;
 
 export function parseSegmentContent(rawMarkdown: string) {
@@ -178,6 +113,40 @@ export function parseSegmentContent(rawMarkdown: string) {
   }
   let auxText = auxTextLines.length > 0 ? auxTextLines.join('\n') : undefined;
   text = text.replace(/^>\s*.*$/gm, '').trim();
+
+  // Parse media regex
+  const mediaRegex = /!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g;
+
+  // Parse media in main text
+  let match;
+  while ((match = mediaRegex.exec(text)) !== null) {
+    const url = match[3];
+    const hasVolume = match[2] !== undefined;
+    media.push({
+      type: hasVolume || url.match(/\.(mp4|webm|ogg)$/i) ? 'video' : 'image',
+      opacity: parseInt(match[1]) / 100,
+      url: url,
+      layer: 'main',
+      ...(hasVolume && { volume: parseInt(match[2]) / 100 }),
+    });
+    text = text.replace(match[0], '');
+  }
+
+  // Parse media in aux text
+  if (auxText) {
+    while ((match = mediaRegex.exec(auxText)) !== null) {
+      const url = match[3];
+      const hasVolume = match[2] !== undefined;
+      media.push({
+        type: hasVolume || url.match(/\.(mp4|webm|ogg)$/i) ? 'video' : 'image',
+        opacity: parseInt(match[1]) / 100,
+        url: url,
+        layer: 'aux',
+        ...(hasVolume && { volume: parseInt(match[2]) / 100 }),
+      });
+      auxText = auxText.replace(match[0], '');
+    }
+  }
 
   // Parse word list
   // !{interval,pattern}(list,of,words)
@@ -226,21 +195,6 @@ export function parseSegmentContent(rawMarkdown: string) {
     }
     auxText = auxText.trim();
     if (auxText.length === 0) auxText = undefined;
-  }
-
-  // Parse media
-  const mediaRegex = /!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g;
-  let match;
-  while ((match = mediaRegex.exec(text)) !== null) {
-    const url = match[3];
-    const hasVolume = match[2] !== undefined;
-    media.push({
-      type: hasVolume || url.match(/\.(mp4|webm|ogg)$/i) ? 'video' : 'image',
-      opacity: parseInt(match[1]) / 100,
-      url: url,
-      ...(hasVolume && { volume: parseInt(match[2]) / 100 }),
-    });
-    text = text.replace(match[0], '');
   }
 
   return { text: text.trim(), auxText, media, wordList };
