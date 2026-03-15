@@ -1,18 +1,40 @@
-import { Engine, Scene, Vector3, HemisphericLight, ArcRotateCamera, MeshBuilder, StandardMaterial, Color3, Texture, DynamicTexture, WebXRDefaultExperience, SceneLoader, TransformNode, ParticleSystem, ShaderMaterial, Effect, VertexBuffer } from '@babylonjs/core';
+import { Engine, Scene, Vector3, HemisphericLight, ArcRotateCamera, MeshBuilder, Mesh, StandardMaterial, Color3, Texture, DynamicTexture, WebXRDefaultExperience, WebXRState, SceneLoader, TransformNode, ParticleSystem, ShaderMaterial, Effect, VertexBuffer, VideoTexture } from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
-import { SegmentConfig } from './timelineParser';
+import { SegmentConfig, MediaItem } from './timelineParser';
 
 export class SceneManager {
   private engine: Engine;
   private scene: Scene;
   private camera: ArcRotateCamera;
   private xr: WebXRDefaultExperience | null = null;
+  private xrUIPanel: Mesh | null = null;
+  private xrUITexture: GUI.AdvancedDynamicTexture | null = null;
+  private xrSegmentText: GUI.TextBlock | null = null;
+  private xrProgressText: GUI.TextBlock | null = null;
+  
+  public onPlayPause?: () => void;
+  public onNext?: () => void;
+  public onPrev?: () => void;
+  public onToggleMode?: () => void;
+  public onVolumeUp?: () => void;
+  public onVolumeDown?: () => void;
+
   private currentMeshes: any[] = [];
   private textPlane: any = null;
   private textTexture: GUI.AdvancedDynamicTexture | null = null;
   private textBackground: GUI.Rectangle | null = null;
   private textBlock: GUI.TextBlock | null = null;
+  private auxTextPlane: any = null;
+  private auxTextTexture: GUI.AdvancedDynamicTexture | null = null;
+  private auxTextBackground: GUI.Rectangle | null = null;
+  private auxTextBlock: GUI.TextBlock | null = null;
+  private wordListMainBlock: GUI.TextBlock | null = null;
+  private wordListAuxBlock: GUI.TextBlock | null = null;
+  private currentWordList: import('./timelineParser').WordList | null = null;
+  private mediaControls: GUI.Image[] = [];
+  private mediaMeshes: any[] = [];
   private time: number = 0;
+  private segmentDuration: number = 0;
   private currentConfig: SegmentConfig | null = null;
   private particleSystem: ParticleSystem | null = null;
 
@@ -35,6 +57,13 @@ export class SceneManager {
 
     this.engine.runRenderLoop(() => {
       this.time += this.engine.getDeltaTime() * 0.001;
+      if (this.time > this.segmentDuration) {
+        this.mediaMeshes.forEach(m => {
+          if (m.material && m.material.diffuseTexture instanceof VideoTexture) {
+            m.material.diffuseTexture.video.pause();
+          }
+        });
+      }
       this.updateCamera();
       this.updatePattern();
       this.updateTextAnimation();
@@ -53,16 +82,190 @@ export class SceneManager {
           sessionMode: 'immersive-vr',
         }
       });
+
+      if (this.xr) {
+        this.xr.baseExperience.onStateChangedObservable.add((state) => {
+          if (state === WebXRState.IN_XR) {
+            this.setupXRUI();
+          } else if (state === WebXRState.NOT_IN_XR) {
+            if (this.xrUIPanel) {
+              this.xrUIPanel.dispose();
+              this.xrUIPanel = null;
+            }
+            if (this.xrUITexture) {
+              this.xrUITexture.dispose();
+              this.xrUITexture = null;
+            }
+          }
+        });
+      }
     } catch (e) {
       console.warn("XR not supported", e);
     }
   }
 
+  private setupXRUI() {
+    if (!this.xr) return;
+
+    // Create a floating UI panel in front of the user
+    const panel = MeshBuilder.CreatePlane("xrUI", { width: 5, height: 4 }, this.scene);
+    
+    // Position it in front of the camera
+    const camera = this.xr.baseExperience.camera;
+    const forward = camera.getForwardRay().direction;
+    panel.position = camera.position.add(forward.scale(4));
+    panel.lookAt(camera.position);
+    panel.rotate(Vector3.Up(), Math.PI);
+    
+    this.xrUIPanel = panel;
+
+    this.xrUITexture = GUI.AdvancedDynamicTexture.CreateForMesh(panel, 1024, 800);
+    
+    const mainContainer = new GUI.Rectangle();
+    mainContainer.width = "100%";
+    mainContainer.height = "100%";
+    mainContainer.background = "rgba(15, 15, 20, 0.95)";
+    mainContainer.cornerRadius = 40;
+    mainContainer.thickness = 0;
+    this.xrUITexture.addControl(mainContainer);
+
+    const stackPanel = new GUI.StackPanel();
+    stackPanel.width = "100%";
+    stackPanel.height = "100%";
+    stackPanel.paddingTop = "20px";
+    stackPanel.paddingBottom = "20px";
+    mainContainer.addControl(stackPanel);
+
+    const header = new GUI.StackPanel();
+    header.height = "100px";
+    header.isVertical = false;
+    stackPanel.addControl(header);
+
+    const title = new GUI.TextBlock();
+    title.text = "PERFECT CADENCE VR";
+    title.width = "70%";
+    title.color = "#10b981"; // Emerald 500
+    title.fontSize = 48;
+    title.fontWeight = "bold";
+    title.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_LEFT;
+    title.paddingLeft = "40px";
+    header.addControl(title);
+
+    const closeBtn = GUI.Button.CreateSimpleButton("exit", "EXIT VR");
+    closeBtn.width = "200px";
+    closeBtn.height = "60px";
+    closeBtn.color = "white";
+    closeBtn.background = "#ef4444";
+    closeBtn.cornerRadius = 10;
+    closeBtn.fontSize = 24;
+    closeBtn.onPointerUpObservable.add(() => this.xr?.baseExperience.exitXRAsync());
+    header.addControl(closeBtn);
+
+    // Current Segment Info
+    const infoPanel = new GUI.Rectangle();
+    infoPanel.height = "200px";
+    infoPanel.width = "90%";
+    infoPanel.background = "rgba(255,255,255,0.05)";
+    infoPanel.cornerRadius = 20;
+    infoPanel.thickness = 1;
+    infoPanel.color = "rgba(255,255,255,0.2)";
+    infoPanel.paddingTop = "20px";
+    stackPanel.addControl(infoPanel);
+
+    const segmentText = new GUI.TextBlock();
+    segmentText.text = "Current Segment: " + (this.currentConfig?.pattern || "None");
+    segmentText.color = "white";
+    segmentText.fontSize = 32;
+    segmentText.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_TOP;
+    segmentText.paddingTop = "20px";
+    infoPanel.addControl(segmentText);
+    this.xrSegmentText = segmentText;
+
+    const progressText = new GUI.TextBlock();
+    progressText.text = "0s / 0s";
+    progressText.color = "#10b981";
+    progressText.fontSize = 48;
+    progressText.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_BOTTOM;
+    progressText.paddingBottom = "20px";
+    infoPanel.addControl(progressText);
+    this.xrProgressText = progressText;
+
+    // Playback Controls
+    const controlsTitle = new GUI.TextBlock();
+    controlsTitle.text = "PLAYBACK CONTROLS";
+    controlsTitle.height = "60px";
+    controlsTitle.color = "#94a3b8";
+    controlsTitle.fontSize = 24;
+    controlsTitle.paddingTop = "30px";
+    stackPanel.addControl(controlsTitle);
+
+    const buttonContainer = new GUI.StackPanel();
+    buttonContainer.isVertical = false;
+    buttonContainer.height = "140px";
+    stackPanel.addControl(buttonContainer);
+
+    const createBtn = (text: string, color: string, callback?: () => void) => {
+      const btn = GUI.Button.CreateSimpleButton(text, text);
+      btn.width = "180px";
+      btn.height = "100px";
+      btn.color = "white";
+      btn.background = color;
+      btn.cornerRadius = 15;
+      btn.fontSize = 28;
+      btn.paddingRight = "15px";
+      btn.paddingLeft = "15px";
+      btn.thickness = 0;
+      btn.hoverCursor = "pointer";
+      if (callback) btn.onPointerUpObservable.add(callback);
+      return btn;
+    };
+
+    const prevBtn = createBtn("PREV", "#334155", () => this.onPrev?.());
+    buttonContainer.addControl(prevBtn);
+
+    const playBtn = createBtn("PLAY/PAUSE", "#059669", () => this.onPlayPause?.());
+    buttonContainer.addControl(playBtn);
+
+    const nextBtn = createBtn("NEXT", "#334155", () => this.onNext?.());
+    buttonContainer.addControl(nextBtn);
+
+    // Volume Controls
+    const volumeContainer = new GUI.StackPanel();
+    volumeContainer.isVertical = false;
+    volumeContainer.height = "100px";
+    volumeContainer.paddingTop = "10px";
+    stackPanel.addControl(volumeContainer);
+
+    const volDownBtn = createBtn("VOL -", "#475569", () => this.onVolumeDown?.());
+    volDownBtn.width = "150px";
+    volDownBtn.height = "80px";
+    volumeContainer.addControl(volDownBtn);
+
+    const volUpBtn = createBtn("VOL +", "#475569", () => this.onVolumeUp?.());
+    volUpBtn.width = "150px";
+    volUpBtn.height = "80px";
+    volumeContainer.addControl(volUpBtn);
+
+    // Mode Toggle
+    const modeBtn = createBtn("TOGGLE EDITOR", "#2563eb", () => this.onToggleMode?.());
+    modeBtn.width = "400px";
+    modeBtn.paddingTop = "20px";
+    stackPanel.addControl(modeBtn);
+
+    const footer = new GUI.TextBlock();
+    footer.text = "Point and trigger to interact";
+    footer.height = "60px";
+    footer.color = "#64748b";
+    footer.fontSize = 20;
+    footer.paddingTop = "20px";
+    stackPanel.addControl(footer);
+  }
+
   private setupGUI() {
     // Create a plane for the text
     const plane = MeshBuilder.CreatePlane("textPlane", { width: 20, height: 10 }, this.scene);
-    plane.parent = this.camera;
-    plane.position = new Vector3(0, 0, 10); // Default further away
+    // Primary text is now in world space, NOT parented to camera
+    plane.position = new Vector3(0, 0, 0); 
     this.textPlane = plane;
 
     // High resolution to avoid blocky glitches
@@ -88,21 +291,161 @@ export class SceneManager {
     this.textBlock.outlineWidth = 8;
     
     this.textBackground.addControl(this.textBlock);
+
+    // Create a plane for the aux text (blockquote)
+    const auxPlane = MeshBuilder.CreatePlane("auxTextPlane", { width: 20, height: 10 }, this.scene);
+    auxPlane.parent = this.camera;
+    auxPlane.position = new Vector3(0, 0, 10);
+    this.auxTextPlane = auxPlane;
+    this.auxTextPlane.isVisible = false;
+
+    this.auxTextTexture = GUI.AdvancedDynamicTexture.CreateForMesh(auxPlane, 2048, 1024);
+    this.auxTextTexture.updateSamplingMode(Texture.TRILINEAR_SAMPLINGMODE);
+    
+    this.auxTextBackground = new GUI.Rectangle();
+    this.auxTextBackground.width = 1;
+    this.auxTextBackground.height = 1;
+    this.auxTextBackground.thickness = 0;
+    this.auxTextBackground.background = "transparent";
+    this.auxTextTexture.addControl(this.auxTextBackground);
+
+    this.auxTextBlock = new GUI.TextBlock();
+    this.auxTextBlock.text = "";
+    this.auxTextBlock.color = "white";
+    this.auxTextBlock.fontSize = 100;
+    this.auxTextBlock.textWrapping = true;
+    this.auxTextBlock.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this.auxTextBlock.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+    this.auxTextBlock.outlineWidth = 8;
+    
+    this.auxTextBackground.addControl(this.auxTextBlock);
+
+    // Create word list blocks on the same layers
+    this.wordListMainBlock = new GUI.TextBlock();
+    this.wordListMainBlock.text = "";
+    this.wordListMainBlock.color = "white";
+    this.wordListMainBlock.fontSize = 120;
+    this.wordListMainBlock.textWrapping = true;
+    this.wordListMainBlock.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this.wordListMainBlock.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+    this.wordListMainBlock.outlineWidth = 8;
+    this.wordListMainBlock.isVisible = false;
+    this.textBackground.addControl(this.wordListMainBlock);
+
+    this.wordListAuxBlock = new GUI.TextBlock();
+    this.wordListAuxBlock.text = "";
+    this.wordListAuxBlock.color = "white";
+    this.wordListAuxBlock.fontSize = 100;
+    this.wordListAuxBlock.textWrapping = true;
+    this.wordListAuxBlock.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+    this.wordListAuxBlock.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+    this.wordListAuxBlock.outlineWidth = 8;
+    this.wordListAuxBlock.isVisible = false;
+    this.auxTextBackground.addControl(this.wordListAuxBlock);
   }
 
-  public updateText(text: string) {
+  private applyMarkdownStyling(block: GUI.TextBlock, text: string, baseFontSize: number) {
+    let cleanText = text;
+    let isHeader = false;
+    let isBold = false;
+    let isItalic = false;
+
+    if (/^#+\s/m.test(cleanText)) {
+      isHeader = true;
+      cleanText = cleanText.replace(/^#+\s/gm, '');
+    }
+    if (/\*\*(.*?)\*\*/g.test(cleanText)) {
+      isBold = true;
+      cleanText = cleanText.replace(/\*\*(.*?)\*\*/g, '$1');
+    }
+    if (/\*(.*?)\*/g.test(cleanText)) {
+      isItalic = true;
+      cleanText = cleanText.replace(/\*(.*?)\*/g, '$1');
+    }
+    if (/_(.*?)_/g.test(cleanText)) {
+      isItalic = true;
+      cleanText = cleanText.replace(/_(.*?)_/g, '$1');
+    }
+
+    block.text = cleanText.trim();
+    block.fontWeight = (isHeader || isBold) ? "bold" : "normal";
+    block.fontStyle = isItalic ? "italic" : "normal";
+    block.fontSize = isHeader ? baseFontSize * 1.5 : baseFontSize;
+  }
+
+  public updateText(text: string, auxText?: string, wordList?: import('./timelineParser').WordList) {
+    this.currentWordList = wordList || null;
     if (this.textBlock) {
-      // Strip markdown for simple display, or just show raw
-      const cleanText = text.replace(/#/g, '').trim();
-      this.textBlock.text = cleanText;
+      const baseSize = this.currentConfig?.textSize ?? 100;
+      this.applyMarkdownStyling(this.textBlock, text, baseSize);
+    }
+    if (this.auxTextBlock && this.auxTextPlane) {
+      if (auxText) {
+        const baseSize = this.currentConfig?.auxSize ?? 100;
+        this.applyMarkdownStyling(this.auxTextBlock, auxText, baseSize);
+        this.auxTextPlane.isVisible = true;
+      } else {
+        this.auxTextBlock.text = "";
+        this.auxTextPlane.isVisible = false;
+      }
     }
   }
 
+  public updateMedia(media: MediaItem[]) {
+    if (!this.textBackground) return;
+    // Clear old media
+    this.mediaControls.forEach(c => c.dispose());
+    this.mediaControls = [];
+    this.mediaMeshes.forEach(m => m.dispose());
+    this.mediaMeshes = [];
+
+    // Add new media
+    media.forEach((m, i) => {
+      if (m.type === 'image') {
+        const img = new GUI.Image("media", m.url);
+        img.alpha = m.opacity;
+        this.textBackground!.addControl(img);
+        this.mediaControls.push(img);
+      } else if (m.type === 'video') {
+        const plane = MeshBuilder.CreatePlane("video", { width: 10, height: 5, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+        plane.parent = this.camera;
+        plane.position = new Vector3(0, 0, 8 + i * 0.1); // Offset slightly
+        const mat = new StandardMaterial("videoMat", this.scene);
+        const videoTexture = new VideoTexture("videoTex", m.url, this.scene, false, false, VideoTexture.TRILINEAR_SAMPLINGMODE, {
+          autoPlay: true,
+          autoUpdateTexture: true,
+          loop: true,
+          muted: m.volume === 0
+        });
+        
+        if (m.volume !== undefined) {
+          videoTexture.video.volume = m.volume;
+        } else {
+          videoTexture.video.volume = 1;
+        }
+        
+        mat.diffuseTexture = videoTexture;
+        mat.emissiveColor = Color3.White();
+        mat.disableLighting = true;
+        mat.alpha = m.opacity;
+        plane.material = mat;
+        this.mediaMeshes.push(plane);
+      }
+    });
+  }
+
   public applyConfig(config: SegmentConfig) {
-    const patternChanged = !this.currentConfig || this.currentConfig.pattern !== config.pattern;
-    const cameraChanged = !this.currentConfig || this.currentConfig.camera !== config.camera;
-    
+    const prevConfig = this.currentConfig;
     this.currentConfig = config;
+    this.segmentDuration = config.duration;
+    this.time = 0;
+
+    if (this.xrSegmentText) {
+      this.xrSegmentText.text = "Current Segment: " + (config.pattern || "None");
+    }
+
+    const patternChanged = !prevConfig || prevConfig.pattern !== config.pattern;
+    const cameraChanged = !prevConfig || prevConfig.camera !== config.camera;
     
     if (patternChanged) {
       this.clearCurrentMeshes();
@@ -137,9 +480,12 @@ export class SceneManager {
 
     // Apply text config
     if (this.textPlane) {
+      // Primary text is now fixed at the world origin (pattern center)
+      // instead of following the camera target.
+      this.textPlane.position = Vector3.Zero();
+      
       const dist = config.textDistance ?? 10;
-      this.textPlane.position.z = dist;
-      // Scale plane proportionally so text doesn't get clipped if it's further away
+      // We use dist to scale the text plane since it's at the origin now
       const scale = dist / 5;
       this.textPlane.scaling = new Vector3(scale, scale, scale);
     }
@@ -158,10 +504,56 @@ export class SceneManager {
         this.textBlock.shadowOffsetX = 0;
         this.textBlock.shadowOffsetY = 0;
       }
+
+      if (this.wordListMainBlock) {
+        this.wordListMainBlock.fontSize = this.textBlock.fontSize;
+        this.wordListMainBlock.fontFamily = this.textBlock.fontFamily;
+        this.wordListMainBlock.shadowColor = this.textBlock.shadowColor;
+        this.wordListMainBlock.shadowBlur = this.textBlock.shadowBlur;
+        this.wordListMainBlock.shadowOffsetX = this.textBlock.shadowOffsetX;
+        this.wordListMainBlock.shadowOffsetY = this.textBlock.shadowOffsetY;
+      }
     }
     
     if (this.textBackground) {
       this.textBackground.background = config.textBackdrop ? "rgba(0,0,0,0.5)" : "transparent";
+    }
+
+    // Apply aux text config
+    if (this.auxTextPlane) {
+      const dist = config.auxDistance ?? 10;
+      this.auxTextPlane.position.z = dist;
+      const scale = dist / 5;
+      this.auxTextPlane.scaling = new Vector3(scale, scale, scale);
+    }
+    
+    if (this.auxTextBlock) {
+      this.auxTextBlock.fontSize = config.auxSize ?? 100;
+      this.auxTextBlock.fontFamily = config.auxFont ?? 'sans-serif';
+
+      if (config.auxShading) {
+        this.auxTextBlock.shadowColor = "rgba(0,0,0,0.8)";
+        this.auxTextBlock.shadowBlur = 10;
+        this.auxTextBlock.shadowOffsetX = 5;
+        this.auxTextBlock.shadowOffsetY = 5;
+      } else {
+        this.auxTextBlock.shadowBlur = 0;
+        this.auxTextBlock.shadowOffsetX = 0;
+        this.auxTextBlock.shadowOffsetY = 0;
+      }
+
+      if (this.wordListAuxBlock) {
+        this.wordListAuxBlock.fontSize = this.auxTextBlock.fontSize;
+        this.wordListAuxBlock.fontFamily = this.auxTextBlock.fontFamily;
+        this.wordListAuxBlock.shadowColor = this.auxTextBlock.shadowColor;
+        this.wordListAuxBlock.shadowBlur = this.auxTextBlock.shadowBlur;
+        this.wordListAuxBlock.shadowOffsetX = this.auxTextBlock.shadowOffsetX;
+        this.wordListAuxBlock.shadowOffsetY = this.auxTextBlock.shadowOffsetY;
+      }
+    }
+    
+    if (this.auxTextBackground) {
+      this.auxTextBackground.background = config.auxBackdrop ? "rgba(0,0,0,0.5)" : "transparent";
     }
 
     // Apply advanced camera options
@@ -549,67 +941,184 @@ export class SceneManager {
   }
 
   private updateTextAnimation() {
-    if (!this.textBlock || !this.textPlane) return;
     const config = this.currentConfig;
     const time = this.time;
 
-    // Outline animation
-    const outlineStyle = config?.textOutline ?? 'rainbow';
-    if (outlineStyle === 'rainbow') {
-      const hue = Math.floor((time * 50) % 360);
-      this.textBlock.outlineColor = `hsl(${hue}, 100%, 50%)`;
-      this.textBlock.outlineWidth = 8;
-    } else if (outlineStyle === 'none') {
-      this.textBlock.outlineWidth = 0;
-    } else {
-      this.textBlock.outlineColor = outlineStyle;
-      this.textBlock.outlineWidth = 8;
+    if (this.textBlock && this.textPlane) {
+      // If not parented to camera, make it face the camera
+      if (!this.textPlane.parent) {
+        this.textPlane.lookAt(this.camera.position);
+        this.textPlane.rotate(Vector3.Up(), Math.PI); // Flip to face correctly
+      }
+
+      // Text color
+      this.textBlock.color = config?.textColor ?? "#ffffff";
+
+      // Outline animation
+      const outlineType = config?.textOutlineType ?? 'none';
+      if (outlineType === 'rainbow') {
+        const hue = Math.floor((time * 50) % 360);
+        this.textBlock.outlineColor = `hsl(${hue}, 100%, 50%)`;
+        this.textBlock.outlineWidth = 8;
+      } else if (outlineType === 'solid') {
+        this.textBlock.outlineColor = config?.textOutlineColor ?? '#000000';
+        this.textBlock.outlineWidth = 8;
+      } else {
+        this.textBlock.outlineWidth = 0;
+      }
+
+      // Advanced animations
+      const animType = config?.textAnimType ?? 'none';
+      const animSpeed = config?.textAnimSpeed ?? 1.0;
+      const animIntensity = config?.textAnimIntensity ?? 1.0;
+
+      // Reset defaults
+      this.textBlock.alpha = 1.0;
+      this.textBlock.rotation = 0;
+      this.textBlock.scaleX = 1.0;
+      this.textBlock.scaleY = 1.0;
+      
+      const dist = config?.textDistance ?? 10;
+      const baseScale = dist / 5;
+      this.textPlane.scaling = new Vector3(baseScale, baseScale, baseScale);
+      this.textPlane.position.y = 0;
+
+      if (animType === 'zoom') {
+        const s = 1.0 + Math.sin(time * 2 * animSpeed) * 0.2 * animIntensity;
+        this.textPlane.scaling.scaleInPlace(s);
+      } else if (animType === 'fade') {
+        this.textBlock.alpha = 0.5 + Math.sin(time * 3 * animSpeed) * 0.5 * animIntensity;
+      } else if (animType === 'float') {
+        this.textPlane.position.y = Math.sin(time * 2 * animSpeed) * 0.5 * animIntensity;
+      } else if (animType === 'warp') {
+        this.textBlock.rotation = Math.sin(time * animSpeed) * 0.1 * animIntensity;
+        this.textBlock.scaleX = 1.0 + Math.sin(time * 4 * animSpeed) * 0.1 * animIntensity;
+        this.textBlock.scaleY = 1.0 + Math.cos(time * 4 * animSpeed) * 0.1 * animIntensity;
+      } else if (animType === 'prism') {
+        this.textBlock.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
+        this.textBlock.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
+        this.textBlock.shadowBlur = 15;
+        this.textBlock.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
+      } else if (animType === 'glitch') {
+        if (Math.random() > 0.9 - (0.1 * animIntensity)) {
+          this.textPlane.position.x = (Math.random() - 0.5) * 0.5 * animIntensity;
+          this.textPlane.position.y = (Math.random() - 0.5) * 0.5 * animIntensity;
+          this.textBlock.alpha = Math.random();
+          this.textBlock.color = Math.random() > 0.5 ? "cyan" : "magenta";
+        } else {
+          this.textPlane.position.x = 0;
+          this.textPlane.position.y = 0;
+          this.textBlock.alpha = 1.0;
+          this.textBlock.color = "white";
+        }
+      }
     }
 
-    // Advanced animations
-    const animType = config?.textAnimType ?? 'none';
-    const animSpeed = config?.textAnimSpeed ?? 1.0;
-    const animIntensity = config?.textAnimIntensity ?? 1.0;
+    if (this.auxTextBlock && this.auxTextPlane && this.auxTextPlane.isVisible) {
+      // Aux Text color
+      this.auxTextBlock.color = config?.auxColor ?? "#ffffff";
 
-    // Reset defaults
-    this.textBlock.alpha = 1.0;
-    this.textBlock.rotation = 0;
-    this.textBlock.scaleX = 1.0;
-    this.textBlock.scaleY = 1.0;
-    
-    const dist = config?.textDistance ?? 10;
-    const baseScale = dist / 5;
-    this.textPlane.scaling = new Vector3(baseScale, baseScale, baseScale);
-    this.textPlane.position.y = 0;
-
-    if (animType === 'zoom') {
-      const s = 1.0 + Math.sin(time * 2 * animSpeed) * 0.2 * animIntensity;
-      this.textPlane.scaling.scaleInPlace(s);
-    } else if (animType === 'fade') {
-      this.textBlock.alpha = 0.5 + Math.sin(time * 3 * animSpeed) * 0.5 * animIntensity;
-    } else if (animType === 'float') {
-      this.textPlane.position.y = Math.sin(time * 2 * animSpeed) * 0.5 * animIntensity;
-    } else if (animType === 'warp') {
-      this.textBlock.rotation = Math.sin(time * animSpeed) * 0.1 * animIntensity;
-      this.textBlock.scaleX = 1.0 + Math.sin(time * 4 * animSpeed) * 0.1 * animIntensity;
-      this.textBlock.scaleY = 1.0 + Math.cos(time * 4 * animSpeed) * 0.1 * animIntensity;
-    } else if (animType === 'prism') {
-      this.textBlock.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
-      this.textBlock.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
-      this.textBlock.shadowBlur = 15;
-      this.textBlock.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
-    } else if (animType === 'glitch') {
-      if (Math.random() > 0.9 - (0.1 * animIntensity)) {
-        this.textPlane.position.x = (Math.random() - 0.5) * 0.5 * animIntensity;
-        this.textPlane.position.y = (Math.random() - 0.5) * 0.5 * animIntensity;
-        this.textBlock.alpha = Math.random();
-        this.textBlock.color = Math.random() > 0.5 ? "cyan" : "magenta";
+      // Outline animation
+      const outlineType = config?.auxOutlineType ?? 'none';
+      if (outlineType === 'rainbow') {
+        const hue = Math.floor((time * 50) % 360);
+        this.auxTextBlock.outlineColor = `hsl(${hue}, 100%, 50%)`;
+        this.auxTextBlock.outlineWidth = 8;
+      } else if (outlineType === 'solid') {
+        this.auxTextBlock.outlineColor = config?.auxOutlineColor ?? '#000000';
+        this.auxTextBlock.outlineWidth = 8;
       } else {
-        this.textPlane.position.x = 0;
-        this.textPlane.position.y = 0;
-        this.textBlock.alpha = 1.0;
-        this.textBlock.color = "white";
+        this.auxTextBlock.outlineWidth = 0;
       }
+
+      // Advanced animations
+      const animType = config?.auxAnimType ?? 'none';
+      const animSpeed = config?.auxAnimSpeed ?? 1.0;
+      const animIntensity = config?.auxAnimIntensity ?? 1.0;
+
+      // Reset defaults
+      this.auxTextBlock.alpha = 1.0;
+      this.auxTextBlock.rotation = 0;
+      this.auxTextBlock.scaleX = 1.0;
+      this.auxTextBlock.scaleY = 1.0;
+      
+      const dist = config?.auxDistance ?? 10;
+      const baseScale = dist / 5;
+      this.auxTextPlane.scaling = new Vector3(baseScale, baseScale, baseScale);
+      // Offset aux text slightly below main text by default if not animated
+      this.auxTextPlane.position.y = -2;
+
+      if (animType === 'zoom') {
+        const s = 1.0 + Math.sin(time * 2 * animSpeed) * 0.2 * animIntensity;
+        this.auxTextPlane.scaling.scaleInPlace(s);
+      } else if (animType === 'fade') {
+        this.auxTextBlock.alpha = 0.5 + Math.sin(time * 3 * animSpeed) * 0.5 * animIntensity;
+      } else if (animType === 'float') {
+        this.auxTextPlane.position.y = -2 + Math.sin(time * 2 * animSpeed) * 0.5 * animIntensity;
+      } else if (animType === 'warp') {
+        this.auxTextBlock.rotation = Math.sin(time * animSpeed) * 0.1 * animIntensity;
+        this.auxTextBlock.scaleX = 1.0 + Math.sin(time * 4 * animSpeed) * 0.1 * animIntensity;
+        this.auxTextBlock.scaleY = 1.0 + Math.cos(time * 4 * animSpeed) * 0.1 * animIntensity;
+      } else if (animType === 'prism') {
+        this.auxTextBlock.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
+        this.auxTextBlock.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
+        this.auxTextBlock.shadowBlur = 15;
+        this.auxTextBlock.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
+      } else if (animType === 'glitch') {
+        if (Math.random() > 0.9 - (0.1 * animIntensity)) {
+          this.auxTextPlane.position.x = (Math.random() - 0.5) * 0.5 * animIntensity;
+          this.auxTextPlane.position.y = -2 + (Math.random() - 0.5) * 0.5 * animIntensity;
+          this.auxTextBlock.alpha = Math.random();
+          this.auxTextBlock.color = Math.random() > 0.5 ? "cyan" : "magenta";
+        } else {
+          this.auxTextPlane.position.x = 0;
+          this.auxTextPlane.position.y = -2;
+          this.auxTextBlock.alpha = 1.0;
+          this.auxTextBlock.color = "white";
+        }
+      }
+    }
+
+    if (this.wordListMainBlock) this.wordListMainBlock.isVisible = false;
+    if (this.wordListAuxBlock) this.wordListAuxBlock.isVisible = false;
+
+    if (this.currentWordList) {
+      const wl = this.currentWordList;
+      const wordIndex = Math.floor(time / wl.interval);
+      
+      if (wordIndex < wl.words.length) {
+        const activeBlock = wl.layer === 'aux' ? this.wordListAuxBlock : this.wordListMainBlock;
+        if (activeBlock) {
+          activeBlock.text = wl.words[wordIndex];
+          activeBlock.isVisible = true;
+          
+          // Handle pattern
+          if (wl.pattern === 'scatter') {
+            // Use wordIndex to seed a pseudo-random position so it stays still for the duration of the word
+            const seed = wordIndex * 123.456;
+            const rx = (Math.sin(seed) - 0.5) * 500; // pixels instead of units
+            const ry = (Math.cos(seed * 1.5) - 0.5) * 500;
+            activeBlock.leftInPixels = rx;
+            activeBlock.topInPixels = ry;
+          } else if (wl.pattern === 'center') {
+            activeBlock.leftInPixels = 0;
+            activeBlock.topInPixels = 0;
+          } else if (wl.pattern === 'random') {
+            // Jitter every frame
+            activeBlock.leftInPixels = (Math.random() - 0.5) * 500;
+            activeBlock.topInPixels = (Math.random() - 0.5) * 500;
+          } else {
+            activeBlock.leftInPixels = 0;
+            activeBlock.topInPixels = 0;
+          }
+        }
+      }
+    }
+  }
+
+  public updateXRProgress(elapsed: number, duration: number) {
+    if (this.xrProgressText) {
+      this.xrProgressText.text = `${elapsed}s / ${duration}s`;
     }
   }
 

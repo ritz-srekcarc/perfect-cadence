@@ -1,7 +1,11 @@
 import React, { useState } from 'react';
-import { TimelineSegment, SegmentConfig } from '../timelineParser';
+import { TimelineSegment, SegmentConfig, parseSegmentContent } from '../timelineParser';
 import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2 } from 'lucide-react';
 import { transcribeAudio } from '../services/audioAnalysisService';
+import Editor from 'react-simple-code-editor';
+import Prism from 'prismjs';
+import 'prismjs/components/prism-markdown';
+import 'prismjs/themes/prism-tomorrow.css';
 
 interface VisualEditorProps {
   segments: TimelineSegment[];
@@ -13,17 +17,19 @@ interface SegmentEditorProps {
   index: number;
   totalSegments: number;
   updateConfig: (index: number, key: keyof SegmentConfig, value: any) => void;
-  updateText: (index: number, text: string) => void;
+  updateMarkdown: (index: number, markdown: string) => void;
   moveSegment: (index: number, dir: number) => void;
   removeSegment: (index: number) => void;
 }
 
-function SegmentEditor({ seg, index, totalSegments, updateConfig, updateText, moveSegment, removeSegment }: SegmentEditorProps) {
+function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown, moveSegment, removeSegment }: SegmentEditorProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isAdvancedAnimOpen, setIsAdvancedAnimOpen] = useState(false);
   const [isAdvancedCamOpen, setIsAdvancedCamOpen] = useState(false);
   const [isAdvancedTextOpen, setIsAdvancedTextOpen] = useState(false);
   const [isAdvancedTextAnimOpen, setIsAdvancedTextAnimOpen] = useState(false);
+  const [isAdvancedAuxOpen, setIsAdvancedAuxOpen] = useState(false);
+  const [isAdvancedAuxAnimOpen, setIsAdvancedAuxAnimOpen] = useState(false);
   const [isAdvancedAudioOpen, setIsAdvancedAudioOpen] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
 
@@ -32,7 +38,8 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateText, mo
     setIsTranscribing(true);
     try {
       const text = await transcribeAudio(seg.config.audioUrl);
-      updateText(index, text);
+      // Append transcribed text to rawMarkdown
+      updateMarkdown(index, seg.rawMarkdown + '\n' + text);
     } finally {
       setIsTranscribing(false);
     }
@@ -50,12 +57,19 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateText, mo
       </div>
 
       <div className="flex flex-col gap-1">
-        <label className="text-xs text-zinc-500">Text (Markdown)</label>
-        <textarea 
-          value={seg.text} 
-          onChange={(e) => updateText(index, e.target.value)}
-          className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-h-[100px] resize-y font-mono"
-        />
+        <label className="text-xs text-zinc-500">Content (Markdown)</label>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-emerald-500">
+          <Editor
+            value={seg.rawMarkdown}
+            onValueChange={(code) => updateMarkdown(index, code)}
+            highlight={code => Prism.highlight(code, Prism.languages.markdown, 'markdown')}
+            padding={12}
+            className="text-sm text-zinc-200 font-mono min-h-[100px]"
+            style={{
+              fontFamily: '"JetBrains Mono", "Fira Code", monospace',
+            }}
+          />
+        </div>
       </div>
 
       <div className="border border-zinc-800 rounded-lg overflow-hidden">
@@ -236,16 +250,22 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateText, mo
                       <input type="number" step="1" value={seg.config.textSize ?? 100} onChange={(e) => updateConfig(index, 'textSize', parseFloat(e.target.value) || 100)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                     </div>
                     <div className="flex flex-col gap-1">
-                      <label className="text-xs text-zinc-500">Outline</label>
-                      <select value={seg.config.textOutline || 'rainbow'} onChange={(e) => updateConfig(index, 'textOutline', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                        <option value="rainbow">Rainbow</option>
+                      <label className="text-xs text-zinc-500">Outline Type</label>
+                      <select value={seg.config.textOutlineType || 'none'} onChange={(e) => updateConfig(index, 'textOutlineType', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
                         <option value="none">None</option>
-                        <option value="black">Black</option>
-                        <option value="white">White</option>
-                        <option value="#ff0000">Red</option>
-                        <option value="#00ff00">Green</option>
-                        <option value="#0000ff">Blue</option>
+                        <option value="rainbow">Rainbow</option>
+                        <option value="solid">Solid</option>
                       </select>
+                    </div>
+                    {seg.config.textOutlineType === 'solid' && (
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs text-zinc-500">Outline Color</label>
+                        <input type="color" value={seg.config.textOutlineColor || '#000000'} onChange={(e) => updateConfig(index, 'textOutlineColor', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 h-10 w-full" />
+                      </div>
+                    )}
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-zinc-500">Text Color</label>
+                      <input type="color" value={seg.config.textColor || '#ffffff'} onChange={(e) => updateConfig(index, 'textColor', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 h-10 w-full" />
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-zinc-500">Shading</label>
@@ -303,6 +323,114 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateText, mo
               )}
             </div>
 
+            {seg.auxText && (
+              <>
+                <div className="border border-zinc-800 rounded-lg overflow-hidden mt-2">
+                  <button 
+                    onClick={() => setIsAdvancedAuxOpen(!isAdvancedAuxOpen)}
+                    className="w-full flex items-center justify-between p-3 bg-zinc-900/30 hover:bg-zinc-900/80 text-sm font-medium text-zinc-400 transition-colors"
+                  >
+                    <span>Advanced Aux</span>
+                    {isAdvancedAuxOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  
+                  {isAdvancedAuxOpen && (
+                    <div className="p-4 bg-zinc-950 flex flex-col gap-4 border-t border-zinc-800">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Font</label>
+                          <select value={seg.config.auxFont || 'sans-serif'} onChange={(e) => updateConfig(index, 'auxFont', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                            <option value="sans-serif">Sans-Serif</option>
+                            <option value="serif">Serif</option>
+                            <option value="monospace">Monospace</option>
+                            <option value="cursive">Cursive</option>
+                            <option value="fantasy">Fantasy</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Distance</label>
+                          <input type="number" step="1" value={seg.config.auxDistance ?? 10} onChange={(e) => updateConfig(index, 'auxDistance', parseFloat(e.target.value) || 10)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Size</label>
+                          <input type="number" step="1" value={seg.config.auxSize ?? 100} onChange={(e) => updateConfig(index, 'auxSize', parseFloat(e.target.value) || 100)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Outline Type</label>
+                          <select value={seg.config.auxOutlineType || 'none'} onChange={(e) => updateConfig(index, 'auxOutlineType', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                            <option value="none">None</option>
+                            <option value="rainbow">Rainbow</option>
+                            <option value="solid">Solid</option>
+                          </select>
+                        </div>
+                        {seg.config.auxOutlineType === 'solid' && (
+                          <div className="flex flex-col gap-1">
+                            <label className="text-xs text-zinc-500">Outline Color</label>
+                            <input type="color" value={seg.config.auxOutlineColor || '#000000'} onChange={(e) => updateConfig(index, 'auxOutlineColor', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 h-10 w-full" />
+                          </div>
+                        )}
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Text Color</label>
+                          <input type="color" value={seg.config.auxColor || '#ffffff'} onChange={(e) => updateConfig(index, 'auxColor', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 h-10 w-full" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Shading</label>
+                          <select value={seg.config.auxShading ? 'true' : 'false'} onChange={(e) => updateConfig(index, 'auxShading', e.target.value === 'true')} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                            <option value="false">Off</option>
+                            <option value="true">On</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Backdrop</label>
+                          <select value={seg.config.auxBackdrop ? 'true' : 'false'} onChange={(e) => updateConfig(index, 'auxBackdrop', e.target.value === 'true')} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                            <option value="false">Off</option>
+                            <option value="true">On</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="border border-zinc-800 rounded-lg overflow-hidden mt-2">
+                  <button 
+                    onClick={() => setIsAdvancedAuxAnimOpen(!isAdvancedAuxAnimOpen)}
+                    className="w-full flex items-center justify-between p-3 bg-zinc-900/30 hover:bg-zinc-900/80 text-sm font-medium text-zinc-400 transition-colors"
+                  >
+                    <span>Advanced Aux Animation</span>
+                    {isAdvancedAuxAnimOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </button>
+                  
+                  {isAdvancedAuxAnimOpen && (
+                    <div className="p-4 bg-zinc-950 flex flex-col gap-4 border-t border-zinc-800">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Animation Type</label>
+                          <select value={seg.config.auxAnimType || 'none'} onChange={(e) => updateConfig(index, 'auxAnimType', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                            <option value="none">None</option>
+                            <option value="zoom">Zoom</option>
+                            <option value="fade">Fade</option>
+                            <option value="float">Float</option>
+                            <option value="warp">Warp</option>
+                            <option value="prism">Prism</option>
+                            <option value="glitch">Glitch</option>
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Speed</label>
+                          <input type="number" step="0.1" value={seg.config.auxAnimSpeed ?? 1.0} onChange={(e) => updateConfig(index, 'auxAnimSpeed', parseFloat(e.target.value) || 0)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-xs text-zinc-500">Intensity</label>
+                          <input type="number" step="0.1" value={seg.config.auxAnimIntensity ?? 1.0} onChange={(e) => updateConfig(index, 'auxAnimIntensity', parseFloat(e.target.value) || 0)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
             <div className="border border-zinc-800 rounded-lg overflow-hidden mt-2">
               <button 
                 onClick={() => setIsAdvancedAudioOpen(!isAdvancedAudioOpen)}
@@ -339,7 +467,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateText, mo
                     <div className="flex gap-2">
                       <input 
                         type="text" 
-                        placeholder="https://... or drop an audio file anywhere"
+                        placeholder="https://... or drop an audio/video file anywhere"
                         value={seg.config.audioUrl || ''} 
                         onChange={(e) => updateConfig(index, 'audioUrl', e.target.value)} 
                         className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" 
@@ -356,7 +484,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateText, mo
                         <Upload size={16} />
                         <input 
                           type="file" 
-                          accept="audio/*" 
+                          accept="audio/*,video/*" 
                           className="hidden" 
                           onChange={(e) => {
                             const file = e.target.files?.[0];
@@ -392,9 +520,17 @@ export function VisualEditor({ segments, onChange }: VisualEditorProps) {
     onChange(newSegments);
   };
 
-  const updateText = (index: number, text: string) => {
+  const updateMarkdown = (index: number, markdown: string) => {
     const newSegments = [...segments];
-    newSegments[index] = { ...newSegments[index], text };
+    const parsedContent = parseSegmentContent(markdown);
+    newSegments[index] = { 
+      ...newSegments[index], 
+      rawMarkdown: markdown,
+      text: parsedContent.text,
+      auxText: parsedContent.auxText,
+      media: parsedContent.media,
+      wordList: parsedContent.wordList
+    };
     onChange(newSegments);
   };
 
@@ -409,10 +545,16 @@ export function VisualEditor({ segments, onChange }: VisualEditorProps) {
       binaural: 'off',
       metronome: 0,
     };
+    const newText = '# New Segment\nAdd your text here.';
+    const parsedContent = parseSegmentContent(newText);
     newSegments.push({
       id: `seg-${Date.now()}`,
       config: { ...lastConfig },
-      text: '# New Segment\nAdd your text here.'
+      rawMarkdown: newText,
+      text: parsedContent.text,
+      auxText: parsedContent.auxText,
+      media: parsedContent.media,
+      wordList: parsedContent.wordList
     });
     onChange(newSegments);
   };
@@ -441,7 +583,7 @@ export function VisualEditor({ segments, onChange }: VisualEditorProps) {
           index={index}
           totalSegments={segments.length}
           updateConfig={updateConfig}
-          updateText={updateText}
+          updateMarkdown={updateMarkdown}
           moveSegment={moveSegment}
           removeSegment={removeSegment}
         />

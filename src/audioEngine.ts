@@ -203,6 +203,19 @@ export class AudioEngine {
     this.currentAudioUrl = '';
   }
 
+  public setVolume(value: number) {
+    if (this.masterGain) {
+      this.masterGain.gain.value = Math.max(0, Math.min(1, value));
+    }
+    if (this.customAudio) {
+      this.customAudio.volume = Math.max(0, Math.min(1, value));
+    }
+  }
+
+  public getVolume(): number {
+    return this.masterGain?.gain.value ?? 0.5;
+  }
+
   private scheduler() {
     if (!this.ctx) return;
     while (this.nextNoteTime < this.ctx.currentTime + 0.1) {

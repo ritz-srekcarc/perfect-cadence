@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Square, Edit3, Eye, Settings, Share2, HelpCircle, X } from 'lucide-react';
+import { Play, Square, Edit3, Eye, Settings, Share2, HelpCircle, X, Ear, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import Editor from 'react-simple-code-editor';
 import Prism from 'prismjs';
@@ -8,9 +8,16 @@ import 'prismjs/themes/prism-tomorrow.css';
 import { SceneManager } from './SceneManager';
 import { audioEngine } from './audioEngine';
 import { DEFAULT_MARKDOWN, parseTimeline, serializeTimeline, TimelineSegment } from './timelineParser';
+import { DEMO_MARKDOWN } from './demoPreset';
 import { VisualEditor } from './components/VisualEditor';
 import { AudioAnalysisFlyout } from './components/AudioAnalysisFlyout';
+import { ShareFlyout } from './components/ShareFlyout';
+import { SeizureWarning } from './components/SeizureWarning';
 import { Wand2 } from 'lucide-react';
+import LZString from 'lz-string';
+import Joyride, { Step, CallBackProps, STATUS } from 'react-joyride';
+import CryptoJS from 'crypto-js';
+import { Lock, Unlock, AlertCircle } from 'lucide-react';
 
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -26,19 +33,131 @@ export default function App() {
   const [copied, setCopied] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [showWarning, setShowWarning] = useState(false);
+  const [isFirstVisit, setIsFirstVisit] = useState(false);
+  const [runTutorial, setRunTutorial] = useState(false);
+  const [encryptedPayload, setEncryptedPayload] = useState<string | null>(null);
+  const [decryptionPassword, setDecryptionPassword] = useState('');
+  const [decryptionError, setDecryptionError] = useState('');
+  const [isDecrypting, setIsDecrypting] = useState(false);
+
+  const tutorialSteps: Step[] = [
+    {
+      target: '.tutorial-play-btn',
+      content: 'Click here to play or pause the timeline.',
+      disableBeacon: true,
+    },
+    {
+      target: '.tutorial-tabs',
+      content: 'Switch between the visual editor and the raw markdown code.',
+    },
+    {
+      target: '.tutorial-magic-btn',
+      content: 'Use AI to generate a timeline from an audio file.',
+    },
+    {
+      target: '.tutorial-share-btn',
+      content: 'Share your creation with others.',
+    },
+    {
+      target: 'canvas',
+      content: 'The primary text layer is fixed to the pattern center in world space, while the blockquote (aux) layer is locked to your camera.',
+      placement: 'center'
+    }
+  ];
+
+  const handleJoyrideCallback = (data: CallBackProps) => {
+    const { status } = data;
+    const finishedStatuses: string[] = [STATUS.FINISHED, STATUS.SKIPPED];
+
+    if (finishedStatuses.includes(status)) {
+      setRunTutorial(false);
+    }
+  };
+
+  useEffect(() => {
+    const hasSeenWarning = localStorage.getItem('hasSeenSeizureWarning');
+    if (!hasSeenWarning) {
+      setIsFirstVisit(true);
+      setShowWarning(true);
+    }
+  }, []);
+
+  const handleCloseWarning = (dontShowAgain: boolean) => {
+    if (dontShowAgain) {
+      localStorage.setItem('hasSeenSeizureWarning', 'true');
+    }
+    setShowWarning(false);
+    if (isFirstVisit) {
+      setMarkdown(DEMO_MARKDOWN);
+      setMode('edit');
+      setRunTutorial(true);
+    }
+  };
+
+  const encodeMarkdown = (md: string) => {
+    try {
+      return LZString.compressToEncodedURIComponent(md);
+    } catch (e) {
+      console.error("Failed to encode markdown", e);
+      return "";
+    }
+  };
+
+  const decodeMarkdown = (encoded: string) => {
+    try {
+      const decoded = LZString.decompressFromEncodedURIComponent(encoded);
+      if (decoded !== null) return decoded;
+      
+      // Fallback for legacy base64
+      try {
+        return decodeURIComponent(atob(encoded).split('').map(function(c) {
+            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+        }).join(''));
+      } catch (e) {
+        return null;
+      }
+    } catch (e) {
+      console.error("Failed to decode markdown", e);
+      return null;
+    }
+  };
+
+  const DEMOS = {
+    DEFAULT: DEFAULT_MARKDOWN,
+    DEMO: DEMO_MARKDOWN,
+    FOCUS: "# Deep Focus\nFocus your mind on the center.\n\n```config\nduration: 30\npattern: spiral\npatternType: hypnotic\npatternSpeed: 0.5\npatternColor1: #000000\npatternColor2: #00ff88\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: focus\nmetronome: 0\n```",
+    COSMOS: "# Cosmic Journey\nDrifting through the stars.\n\n```config\nduration: 45\npattern: particles\npatternType: galaxy\npatternSpeed: 0.2\ncamera: orbit\ncameraSpeed: 0.1\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: sleep\n```",
+    GEOMETRY: "# Sacred Geometry\nThe patterns of the universe.\n\n```config\nduration: 40\npattern: mandala\npatternType: sacred_geometry\npatternComplexity: 10\npatternColor1: #ff00ff\npatternColor2: #00ffff\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: relax\n```",
+    ENERGY: "# Energy Pulse\nFeel the rhythm.\n\n```config\nduration: 20\npattern: pulse\npatternType: vortex\npatternSpeed: 2.0\nmetronome: 120\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: focus\n```"
+  };
+
+  // Pre-calculate encoded demos for highlighting and links
+  const encodedDemos = React.useMemo(() => ({
+    DEFAULT: encodeMarkdown(DEMOS.DEFAULT),
+    DEMO: encodeMarkdown(DEMOS.DEMO),
+    FOCUS: encodeMarkdown(DEMOS.FOCUS),
+    COSMOS: encodeMarkdown(DEMOS.COSMOS),
+    GEOMETRY: encodeMarkdown(DEMOS.GEOMETRY),
+    ENERGY: encodeMarkdown(DEMOS.ENERGY),
+  }), []);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const encoded = params.get('m');
+    const encrypted = params.get('e');
     let initialMarkdown = DEFAULT_MARKDOWN;
     
+    if (encrypted) {
+      setEncryptedPayload(encrypted);
+      return;
+    }
+
     if (encoded) {
-      try {
-        initialMarkdown = decodeURIComponent(atob(encoded).split('').map(function(c) {
-            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        }).join(''));
-      } catch (e) {
-        console.error("Failed to parse markdown from URL", e);
+      const decoded = decodeMarkdown(encoded);
+      if (decoded) {
+        initialMarkdown = decoded;
       }
     }
 
@@ -54,30 +173,36 @@ export default function App() {
     setMarkdown(initialMarkdown);
   }, []);
 
-  const encodeMarkdown = (md: string) => {
-    try {
-      return btoa(encodeURIComponent(md).replace(/%([0-9A-F]{2})/g,
-          function toSolidBytes(match, p1) {
-              return String.fromCharCode(parseInt(p1, 16));
-      }));
-    } catch (e) {
-      console.error("Failed to encode markdown", e);
-      return "";
-    }
+  const handleShare = () => {
+    setIsShareOpen(true);
   };
 
-  const handleShare = () => {
-    try {
-      const encoded = encodeMarkdown(markdown);
-      const url = new URL(window.location.href);
-      url.searchParams.set('m', encoded);
-      window.history.replaceState({}, '', url.toString());
-      navigator.clipboard.writeText(url.toString());
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    } catch (e) {
-      console.error("Failed to encode markdown", e);
-    }
+  const handleDecrypt = (e: React.FormEvent) => {
+    e.preventDefault();
+    setDecryptionError('');
+    setIsDecrypting(true);
+
+    // Small delay for UX
+    setTimeout(() => {
+      try {
+        if (!encryptedPayload) return;
+        const bytes = CryptoJS.AES.decrypt(encryptedPayload, decryptionPassword);
+        const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+        
+        if (!decrypted) {
+          throw new Error('Invalid password');
+        }
+
+        setMarkdown(decrypted);
+        setEncryptedPayload(null);
+        setDecryptionPassword('');
+      } catch (err) {
+        console.error("Decryption failed", err);
+        setDecryptionError('Incorrect password. Please try again.');
+      } finally {
+        setIsDecrypting(false);
+      }
+    }, 500);
   };
 
   const totalDuration = segments.reduce((acc, seg) => acc + seg.config.duration, 0);
@@ -106,13 +231,62 @@ export default function App() {
     if (canvasRef.current && !sceneManagerRef.current) {
       sceneManagerRef.current = new SceneManager(canvasRef.current);
     }
+    
+    if (sceneManagerRef.current) {
+      sceneManagerRef.current.onPlayPause = () => {
+        setIsPlaying(prev => {
+          if (prev) {
+            audioEngine.stopAll();
+            return false;
+          } else {
+            if (segments.length > 0) {
+              setCurrentSegmentIndex(0);
+              setTimeElapsed(0);
+              setMode('view');
+              return true;
+            }
+            return false;
+          }
+        });
+      };
+      sceneManagerRef.current.onNext = () => {
+        setCurrentSegmentIndex(prev => {
+          if (prev < segments.length - 1) {
+            setTimeElapsed(0);
+            return prev + 1;
+          }
+          return prev;
+        });
+      };
+      sceneManagerRef.current.onPrev = () => {
+        setCurrentSegmentIndex(prev => {
+          if (prev > 0) {
+            setTimeElapsed(0);
+            return prev - 1;
+          }
+          return prev;
+        });
+      };
+      sceneManagerRef.current.onToggleMode = () => {
+        setMode(prev => prev === 'edit' ? 'view' : 'edit');
+      };
+      sceneManagerRef.current.onVolumeUp = () => {
+        const currentVol = audioEngine.getVolume();
+        audioEngine.setVolume(currentVol + 0.1);
+      };
+      sceneManagerRef.current.onVolumeDown = () => {
+        const currentVol = audioEngine.getVolume();
+        audioEngine.setVolume(currentVol - 0.1);
+      };
+    }
+
     return () => {
       if (sceneManagerRef.current) {
         sceneManagerRef.current.dispose();
         sceneManagerRef.current = null;
       }
     };
-  }, []);
+  }, [segments.length]); // Re-bind if segments change, but mostly we just need the refs to be stable
 
   useEffect(() => {
     setSegments(parseTimeline(markdown));
@@ -145,7 +319,9 @@ export default function App() {
       // Apply scene config
       if (sceneManagerRef.current) {
         sceneManagerRef.current.applyConfig(currentSegment.config);
-        sceneManagerRef.current.updateText(currentSegment.text);
+        sceneManagerRef.current.updateText(currentSegment.text, currentSegment.auxText, currentSegment.wordList);
+        sceneManagerRef.current.updateMedia(currentSegment.media);
+        sceneManagerRef.current.updateXRProgress(timeElapsed, currentSegment.config.duration);
       }
 
       // Apply audio config
@@ -164,7 +340,13 @@ export default function App() {
       }
 
       interval = window.setInterval(() => {
-        setTimeElapsed(prev => prev + 1);
+        setTimeElapsed(prev => {
+          const next = prev + 1;
+          if (sceneManagerRef.current) {
+            sceneManagerRef.current.updateXRProgress(next, currentSegment.config.duration);
+          }
+          return next;
+        });
       }, 1000);
     } else {
       audioEngine.stopAll();
@@ -191,7 +373,7 @@ export default function App() {
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     const file = e.dataTransfer.files[0];
-    if (file && file.type.startsWith('audio/')) {
+    if (file && (file.type.startsWith('audio/') || file.type.startsWith('video/'))) {
       const url = URL.createObjectURL(file);
       const newSegments = parseTimeline(markdown);
       if (newSegments.length > 0) {
@@ -225,13 +407,13 @@ export default function App() {
             </button>
             <button 
               onClick={handleShare}
-              className="p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              className="tutorial-share-btn p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
             >
-              <Share2 size={16} /> {copied ? 'Copied!' : 'Share'}
+              <Share2 size={16} /> Share
             </button>
             <button 
               onClick={isPlaying ? handleStop : handlePlay}
-              className={`p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors ${isPlaying ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'}`}
+              className={`tutorial-play-btn p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors ${isPlaying ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'}`}
             >
               {isPlaying ? <><Square size={16} /> Stop</> : <><Play size={16} /> Play</>}
             </button>
@@ -239,10 +421,10 @@ export default function App() {
         </div>
         
         <div className="flex-1 flex flex-col overflow-hidden">
-          <div className="flex border-b border-zinc-800 bg-zinc-900">
+          <div className="tutorial-tabs flex border-b border-zinc-800 bg-zinc-900">
             <button 
               onClick={() => setIsAnalysisOpen(true)}
-              className="px-4 py-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/50 transition-colors border-r border-zinc-800"
+              className="tutorial-magic-btn px-4 py-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/50 transition-colors border-r border-zinc-800"
               title="Import & Analyze Audio"
             >
               <Wand2 size={18} />
@@ -306,47 +488,56 @@ export default function App() {
                 {/* Pill Menu */}
                 <div className="flex bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 rounded-full px-1 py-1 shadow-lg">
                   <a 
-                    href={`?m=${encodeMarkdown(DEFAULT_MARKDOWN)}`}
-                    className="px-4 py-1.5 text-xs font-medium text-zinc-300 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                    href={`?m=${encodedDemos.DEMO}`}
+                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${(markdown === DEMOS.DEMO) ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
-                    Default
+                    demo
                   </a>
                   <a 
-                    href={`?m=${encodeMarkdown("# Deep Focus\nFocus your mind on the center.\n\n```config\nduration: 30\npattern: spiral\npatternType: hypnotic\npatternSpeed: 0.5\npatternColor1: #000000\npatternColor2: #00ff88\nbinaural: focus\nmetronome: 0\n```")}`}
-                    className="px-4 py-1.5 text-xs font-medium text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                    href={`?m=${encodedDemos.FOCUS}`}
+                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${markdown === DEMOS.FOCUS ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
-                    Focus
+                    simple
                   </a>
                   <a 
-                    href={`?m=${encodeMarkdown("# Cosmic Journey\nDrifting through the stars.\n\n```config\nduration: 45\npattern: particles\npatternType: galaxy\npatternSpeed: 0.2\ncamera: orbit\ncameraSpeed: 0.1\nbinaural: sleep\n```")}`}
-                    className="px-4 py-1.5 text-xs font-medium text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                    href={`?m=${encodedDemos.COSMOS}`}
+                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${markdown === DEMOS.COSMOS ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
-                    Cosmos
+                    trans
                   </a>
                   <a 
-                    href={`?m=${encodeMarkdown("# Sacred Geometry\nThe patterns of the universe.\n\n```config\nduration: 40\npattern: mandala\npatternType: sacred_geometry\npatternComplexity: 10\npatternColor1: #ff00ff\npatternColor2: #00ffff\nbinaural: relax\n```")}`}
-                    className="px-4 py-1.5 text-xs font-medium text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                    href={`?m=${encodedDemos.GEOMETRY}`}
+                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${markdown === DEMOS.GEOMETRY ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
-                    Geometry
+                    guided
                   </a>
                   <a 
-                    href={`?m=${encodeMarkdown("# Energy Pulse\nFeel the rhythm.\n\n```config\nduration: 20\npattern: pulse\npatternType: vortex\npatternSpeed: 2.0\nmetronome: 120\nbinaural: focus\n```")}`}
-                    className="px-4 py-1.5 text-xs font-medium text-zinc-500 hover:text-emerald-400 hover:bg-zinc-800/80 rounded-full transition-all"
+                    href={`?m=${encodedDemos.ENERGY}`}
+                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${markdown === DEMOS.ENERGY ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
                   >
-                    Energy
+                    spicy
                   </a>
                 </div>
               </>
             )}
             <div className="flex gap-2 ml-auto">
               {!isPlaying && (
-                <button 
-                  onClick={() => setIsHelpOpen(true)}
-                  className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
-                  title="Help & Syntax"
-                >
-                  <HelpCircle size={16} />
-                </button>
+                <>
+                  <button 
+                    onClick={handleShare}
+                    className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
+                    title="Share Experience"
+                  >
+                    <Share2 size={16} />
+                  </button>
+                  <button 
+                    onClick={() => setIsHelpOpen(true)}
+                    className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
+                    title="Help & Syntax"
+                  >
+                    <HelpCircle size={16} />
+                  </button>
+                </>
               )}
               <button 
                 onClick={() => setMode('edit')}
@@ -370,18 +561,33 @@ export default function App() {
         <canvas 
           ref={canvasRef} 
           className="w-full h-full outline-none touch-none absolute inset-0 z-0"
+          onClick={() => {
+            setMode('view');
+            setIsHelpOpen(false);
+          }}
         />
 
-        {/* Markdown Text Overlay */}
-        {isPlaying && segments.length > 0 && (
-          <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none p-12">
-            <div className="text-center max-w-3xl drop-shadow-2xl">
-              <div className="prose prose-invert prose-emerald prose-h1:text-5xl prose-h1:font-light prose-h1:tracking-tight prose-p:text-2xl prose-p:font-light prose-p:leading-relaxed opacity-90">
-                <ReactMarkdown>{segments[currentSegmentIndex].text}</ReactMarkdown>
-              </div>
-            </div>
-          </div>
+        {/* Demo Preset Button */}
+        {markdown === DEMOS.DEMO && (
+          <button
+            className="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-4 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] hover:bg-emerald-500/30 hover:shadow-[0_0_25px_rgba(16,185,129,0.7)] transition-all duration-300 group"
+            title="add binaural audio"
+            onClick={() => {
+              const parsedSegments = parseTimeline(markdown);
+              const binaurals = ['focus', 'relax', 'sleep'];
+              parsedSegments.forEach(seg => {
+                seg.config.binaural = binaurals[Math.floor(Math.random() * binaurals.length)];
+              });
+              const newMarkdown = serializeTimeline(parsedSegments);
+              setMarkdown(newMarkdown);
+            }}
+          >
+            <Ear size={24} />
+          </button>
         )}
+
+        {/* Markdown Text Overlay */}
+        {/* Removed: Unstyled white copy of the segment text */}
 
         {/* Playback Progress Overlay */}
         {isPlaying && segments.length > 0 && (
@@ -415,6 +621,100 @@ export default function App() {
         }} 
       />
 
+      <ShareFlyout 
+        isOpen={isShareOpen} 
+        onClose={() => setIsShareOpen(false)} 
+        markdown={markdown}
+      />
+
+      <Joyride
+        steps={tutorialSteps}
+        run={runTutorial}
+        continuous={true}
+        showSkipButton={true}
+        callback={handleJoyrideCallback}
+        styles={{
+          options: {
+            primaryColor: '#10b981',
+            backgroundColor: '#18181b',
+            textColor: '#f4f4f5',
+            arrowColor: '#18181b',
+            overlayColor: 'rgba(0, 0, 0, 0.8)',
+          },
+          tooltip: {
+            border: '1px solid #27272a',
+            borderRadius: '12px',
+          },
+        }}
+      />
+
+      {showWarning && <SeizureWarning onClose={handleCloseWarning} />}
+
+      {/* Decryption UI Overlay */}
+      {encryptedPayload && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950 p-4">
+          <div className="w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-3xl p-8 shadow-2xl flex flex-col items-center gap-6">
+            <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center">
+              <Lock size={40} className="text-emerald-400" />
+            </div>
+            
+            <div className="text-center">
+              <h2 className="text-2xl font-bold text-zinc-100 mb-2">Encrypted Experience</h2>
+              <p className="text-zinc-400 text-sm">This timeline is protected by a secret key. Enter the password to unlock it.</p>
+            </div>
+
+            <form onSubmit={handleDecrypt} className="w-full flex flex-col gap-4">
+              <div className="relative">
+                <input 
+                  type="password"
+                  autoFocus
+                  placeholder="Enter secret key..."
+                  value={decryptionPassword}
+                  onChange={(e) => setDecryptionPassword(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-4 text-center text-lg text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all"
+                />
+              </div>
+
+              {decryptionError && (
+                <div className="flex items-center gap-2 text-red-400 text-sm justify-center animate-in fade-in slide-in-from-top-1">
+                  <AlertCircle size={14} />
+                  <span>{decryptionError}</span>
+                </div>
+              )}
+
+              <button 
+                type="submit"
+                disabled={isDecrypting || !decryptionPassword}
+                className="w-full py-4 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-bold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-900/20"
+              >
+                {isDecrypting ? (
+                  <>
+                    <Loader2 size={20} className="animate-spin" />
+                    <span>Decrypting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Unlock size={20} />
+                    <span>Unlock Experience</span>
+                  </>
+                )}
+              </button>
+            </form>
+
+            <button 
+              onClick={() => {
+                setEncryptedPayload(null);
+                window.history.replaceState({}, '', window.location.pathname);
+                setMarkdown(DEFAULT_MARKDOWN);
+              }}
+              className="text-zinc-500 hover:text-zinc-300 text-xs font-medium uppercase tracking-widest transition-colors"
+            >
+              Cancel and load default
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Help Pane */}
         <div className={`absolute top-0 right-0 h-full w-80 bg-zinc-900 border-l border-zinc-800 shadow-2xl z-50 transform transition-transform duration-300 flex flex-col ${isHelpOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
@@ -434,6 +734,17 @@ export default function App() {
               >
                 View on GitHub →
               </a>
+              <div className="border-t border-zinc-800 pt-4 mt-4">
+                <button 
+                  onClick={() => {
+                    setIsHelpOpen(false);
+                    setRunTutorial(true);
+                  }}
+                  className="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg text-sm font-medium transition-colors"
+                >
+                  Start Interactive Tutorial
+                </button>
+              </div>
             </div>
 
             <h3 className="text-zinc-100 mt-0">Timeline Syntax</h3>
@@ -446,8 +757,20 @@ camera: static
 binaural: focus
 metronome: 60
 \`\`\``}</code></pre>
+
+            <h3 className="text-zinc-100 mt-6">Text Styling</h3>
+            <p className="text-zinc-400 font-medium text-xs bg-emerald-500/10 border border-emerald-500/20 p-2 rounded-lg mb-4">
+              <span className="text-emerald-400">Note:</span> Primary text is fixed to the pattern center in world space. Auxiliary text (blockquote) is locked to your camera view.
+            </p>
+            <p className="text-zinc-400">Basic markdown styling is supported in the WebXR canvas:</p>
+            <ul className="text-zinc-400 space-y-2">
+              <li><strong className="text-zinc-200">Headers:</strong> Start a line with <code>#</code> to make it larger and bold.</li>
+              <li><strong className="text-zinc-200">Bold:</strong> Wrap text in <code>**</code> (e.g., <code>**bold**</code>).</li>
+              <li><strong className="text-zinc-200">Italic:</strong> Wrap text in <code>*</code> or <code>_</code> (e.g., <code>*italic*</code>).</li>
+              <li><strong className="text-zinc-200">Auxiliary Text:</strong> Start a line with <code>&gt;</code> to render it as a separate blockquote layer.</li>
+            </ul>
             
-            <h3 className="text-zinc-100">Options</h3>
+            <h3 className="text-zinc-100 mt-6">Options</h3>
             <ul className="text-zinc-400 space-y-2">
               <li><strong className="text-zinc-200">duration:</strong> Seconds (number)</li>
               <li><strong className="text-zinc-200">pattern:</strong> <code>spiral</code>, <code>tunnel</code>, <code>rings</code>, <code>particles</code>, <code>mandala</code>, <code>kaleidoscope</code>, <code>waves</code>, <code>pulse</code></li>
@@ -476,7 +799,23 @@ metronome: 60
               <li><strong className="text-zinc-200">carrierFreq:</strong> Hz (number, for custom binaural)</li>
               <li><strong className="text-zinc-200">beatFreq:</strong> Hz (number, for custom binaural)</li>
               <li><strong className="text-zinc-200">ampModulation:</strong> Hz (number, optional)</li>
-              <li><strong className="text-zinc-200">audioUrl:</strong> URL to custom audio file (string). You can also drag and drop an audio file onto the window.</li>
+              <li><strong className="text-zinc-200">audioUrl:</strong> URL to custom audio or video file (string). You can also drag and drop an audio or video file onto the window.</li>
+            </ul>
+
+            <h3 className="text-zinc-100 mt-6">Wordlists</h3>
+            <p className="text-zinc-400">Display a sequence of words: <code>!{`{interval,pattern}(word1,word2)`}</code></p>
+            <ul className="text-zinc-400 space-y-2">
+              <li><strong className="text-zinc-200">interval:</strong> Seconds per word</li>
+              <li><strong className="text-zinc-200">pattern:</strong> <code>center</code>, <code>scatter</code>, <code>random</code></li>
+              <li><strong className="text-zinc-200">Pre-built lists:</strong> Use a single word to load a list: <code>relax</code>, <code>focus</code>, <code>sleep</code>, <code>confidence</code>, <code>energy</code>. Example: <code>!{`{3,scatter}(relax)`}</code></li>
+            </ul>
+
+            <h3 className="text-zinc-100 mt-6">Images & Videos</h3>
+            <p className="text-zinc-400">Add media using markdown syntax with opacity: <code>![opacity](url)</code> or <code>![opacity,volume](url)</code></p>
+            <ul className="text-zinc-400 space-y-2">
+              <li><strong className="text-zinc-200">opacity:</strong> 0-100 (e.g., <code>![50](https://example.com/image.jpg)</code>)</li>
+              <li><strong className="text-zinc-200">volume:</strong> 0-100 (optional, implies video). Example: <code>![50,80](https://example.com/video.mp4)</code></li>
+              <li><strong className="text-zinc-200">Video:</strong> URLs ending in .mp4, .webm, or .ogg will play automatically. If a volume is provided, it will always be treated as a video.</li>
             </ul>
           </div>
         </div>

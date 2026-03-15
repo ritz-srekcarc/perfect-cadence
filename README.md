@@ -20,7 +20,9 @@ Perfect Cadence is a professional-grade hypnotic visualizer and meditation tool 
 
 ### 📝 Timeline System
 - **Markdown-Based:** Define your experience using a simple Markdown syntax with `---` separators.
-- **Visual Editor:** A user-friendly interface to manage segments, colors, patterns, and audio without writing code.
+- **Rich Text & Media:** Support for Markdown headers (`#`), emphasis (`**bold**`, `*italic*`), blockquotes (`> aux text`), images, and videos (`![opacity](url)`).
+- **Wordlists:** Display a sequence of words with customizable intervals and patterns (`!{interval,pattern}(list,of,words)`). Includes pre-built hypnotic lists (`relax`, `focus`, `sleep`, `confidence`, `energy`).
+- **Visual Editor:** A user-friendly interface to manage segments, colors, patterns, and audio without writing code. Now features a full Markdown editor with syntax highlighting for each segment.
 - **Text Animations:** Bring your words to life with effects like Zoom, Fade, Float, Warp, Prism, and the high-energy Glitch animation.
 
 ## Getting Started

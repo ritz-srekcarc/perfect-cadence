@@ -40,9 +40,12 @@ export function AudioAnalysisFlyout({ isOpen, onClose, onAnalysisComplete }: Aud
           color = '#0088ff';
         }
 
+        const textContent = `# Segment ${i + 1}\n${seg.text}`;
         return {
           id: `analyzed-${Date.now()}-${i}`,
-          text: `# Segment ${i + 1}\n${seg.text}`,
+          text: textContent,
+          rawMarkdown: textContent,
+          media: [],
           config: {
             duration: Math.max(2, seg.end - seg.start),
             pattern,
@@ -51,10 +54,7 @@ export function AudioAnalysisFlyout({ isOpen, onClose, onAnalysisComplete }: Aud
             cameraSpeed: 0.5,
             binaural: 'focus',
             metronome: 0,
-            audioUrl: audioUrl // Use the same audio for all segments (they will play their part if we had seeking, but for now we just use the file)
-            // Note: The app currently plays the whole file from start when a segment starts.
-            // To be truly accurate we'd need to add start/end times to SegmentConfig and update SceneManager/AudioEngine.
-            // But for this request, I'll stick to generating the segments.
+            audioUrl: audioUrl
           }
         };
       });
@@ -86,15 +86,15 @@ export function AudioAnalysisFlyout({ isOpen, onClose, onAnalysisComplete }: Aud
 
         <div className="p-6 flex flex-col gap-6">
           <div className="text-sm text-zinc-400">
-            Import an audio file to automatically generate a synchronized visual timeline based on speech and sentiment.
+            Import an audio or video file to automatically generate a synchronized visual timeline based on speech and sentiment.
           </div>
 
           <div className="flex flex-col gap-2">
-            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Audio URL</label>
+            <label className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Media URL</label>
             <div className="flex gap-2">
               <input 
                 type="text" 
-                placeholder="https://example.com/audio.mp3"
+                placeholder="https://example.com/media.mp4"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
                 className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-sm text-zinc-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
@@ -118,7 +118,7 @@ export function AudioAnalysisFlyout({ isOpen, onClose, onAnalysisComplete }: Aud
             <div className="text-sm font-medium text-zinc-300">Choose local file</div>
             <input 
               type="file" 
-              accept="audio/*" 
+              accept="audio/*,video/*" 
               className="hidden" 
               onChange={(e) => {
                 const file = e.target.files?.[0];

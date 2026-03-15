@@ -12,15 +12,20 @@ export interface AudioSegment {
 export async function transcribeAudio(audioUrl: string): Promise<string> {
   try {
     const response = await fetch(audioUrl);
-    const blob = await response.blob();
-    const base64Data = await blobToBase64(blob);
+    const arrayBuffer = await response.arrayBuffer();
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    // Extract the full audio as WAV to ignore any video stream
+    const chunkBlob = await extractAudioChunk(audioBuffer, 0, audioBuffer.duration);
+    const base64Data = await blobToBase64(chunkBlob);
 
     const result = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [
         {
           inlineData: {
-            mimeType: blob.type || "audio/mpeg",
+            mimeType: "audio/wav",
             data: base64Data,
           },
         },

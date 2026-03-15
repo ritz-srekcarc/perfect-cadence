@@ -1,5 +1,9 @@
 {
-  "name": "Perfect Cadence",
+  "name": "Remix: Perfect Cadence",
   "description": "Generate 3D spirals and mesmerizing patterns in WebXR with synchronized binaural beats and markdown-based timelines.",
-  "requestFramePermissions": ["camera", "microphone", "xr-spatial-tracking"]
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "xr-spatial-tracking"
+  ]
 }
