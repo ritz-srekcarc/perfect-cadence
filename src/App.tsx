@@ -19,6 +19,23 @@ import Joyride, { Step, CallBackProps, STATUS } from 'react-joyride';
 import CryptoJS from 'crypto-js';
 import { Lock, Unlock, AlertCircle } from 'lucide-react';
 
+const SpiralLogo = ({ size = 20, className = "" }: { size?: number, className?: string }) => (
+  <svg 
+    width={size} 
+    height={size} 
+    viewBox="0 0 100 100" 
+    className={`text-emerald-400 animate-[spin_10s_linear_infinite] ${className}`}
+  >
+    <path 
+      d="M50 50c0-5.5 4.5-10 10-10s10 4.5 10 10-4.5 10-10 10-10-4.5-10-10zm-15 0c0-13.8 11.2-25 25-25s25 11.2 25 25-11.2 25-25 25-25-11.2-25-25zm-15 0c0-22.1 17.9-40 40-40s40 17.9 40 40-17.9 40-40 40-40-17.9-40-40z" 
+      fill="none" 
+      stroke="currentColor" 
+      strokeWidth="4" 
+    />
+    <circle cx="50" cy="50" r="5" fill="currentColor" />
+  </svg>
+);
+
 export default function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneManagerRef = useRef<SceneManager | null>(null);
@@ -41,24 +58,55 @@ export default function App() {
   const [decryptionPassword, setDecryptionPassword] = useState('');
   const [decryptionError, setDecryptionError] = useState('');
   const [isDecrypting, setIsDecrypting] = useState(false);
+  const [sidebarWidth, setSidebarWidth] = useState(400);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    setIsDragging(true);
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  };
+
+  const handleMouseMove = (e: MouseEvent) => {
+    setSidebarWidth(Math.max(200, Math.min(800, e.clientX)));
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  };
 
   const tutorialSteps: Step[] = [
     {
       target: '.tutorial-play-btn',
       content: 'Click here to play or pause the timeline.',
       disableBeacon: true,
+      placement: 'bottom',
     },
     {
       target: '.tutorial-tabs',
       content: 'Switch between the visual editor and the raw markdown code.',
+      placement: 'bottom',
     },
     {
       target: '.tutorial-magic-btn',
       content: 'Use AI to generate a timeline from an audio file.',
+      placement: 'right',
     },
     {
       target: '.tutorial-share-btn',
       content: 'Share your creation with others.',
+      placement: 'bottom',
     },
     {
       target: 'canvas',
@@ -92,7 +140,10 @@ export default function App() {
     if (isFirstVisit) {
       setMarkdown(DEMO_MARKDOWN);
       setMode('edit');
-      setRunTutorial(true);
+      // Add a small delay to allow the sidebar transition to complete
+      setTimeout(() => {
+        setRunTutorial(true);
+      }, 400);
     }
   };
 
@@ -142,6 +193,41 @@ export default function App() {
     GEOMETRY: encodeMarkdown(DEMOS.GEOMETRY),
     ENERGY: encodeMarkdown(DEMOS.ENERGY),
   }), []);
+
+  const presetLinks = (
+    <>
+      <a 
+        href={`?m=${encodedDemos.DEMO}`}
+        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${(markdown === DEMOS.DEMO) ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
+      >
+        demo
+      </a>
+      <a 
+        href={`?m=${encodedDemos.FOCUS}`}
+        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === DEMOS.FOCUS ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
+      >
+        simple
+      </a>
+      <a 
+        href={`?m=${encodedDemos.COSMOS}`}
+        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === DEMOS.COSMOS ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
+      >
+        trans
+      </a>
+      <a 
+        href={`?m=${encodedDemos.GEOMETRY}`}
+        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === DEMOS.GEOMETRY ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
+      >
+        guided
+      </a>
+      <a 
+        href={`?m=${encodedDemos.ENERGY}`}
+        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === DEMOS.ENERGY ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
+      >
+        spicy
+      </a>
+    </>
+  );
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -389,15 +475,26 @@ export default function App() {
 
   return (
     <div 
-      className="flex h-screen w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden"
+      className="relative flex h-screen w-full bg-zinc-950 text-zinc-100 font-sans overflow-hidden"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
       {/* Sidebar / Editor */}
-      <div className={`flex flex-col border-r border-zinc-800 bg-zinc-900 transition-all duration-300 ${mode === 'edit' ? 'w-1/2' : 'w-0 opacity-0 overflow-hidden'}`}>
+      <div 
+        className={`flex flex-col border-r border-zinc-800 bg-zinc-900 transition-all duration-300 ${mode === 'edit' ? (isMobile ? 'fixed inset-0 z-50 w-full' : 'absolute top-0 left-0 bottom-0 z-40') : 'hidden'}`}
+        style={!isMobile ? { width: `${sidebarWidth}px` } : {}}
+      >
         <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
-          <h1 className="text-xl font-semibold tracking-tight text-emerald-400">Perfect Cadence</h1>
+          <div className="flex items-center gap-2">
+            <SpiralLogo size={18} />
+            <h1 className="text-lg font-cursive text-emerald-400">Perfect Cadence</h1>
+          </div>
           <div className="flex gap-2">
+            {isMobile && (
+              <button onClick={() => setMode('view')} className="p-2 text-zinc-400 hover:text-white">
+                <X size={20} />
+              </button>
+            )}
             <button 
               onClick={() => setIsHelpOpen(true)}
               className="p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
@@ -420,7 +517,14 @@ export default function App() {
           </div>
         </div>
         
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 flex flex-col overflow-hidden relative">
+          {/* Resize Handle */}
+          {!isMobile && (
+            <div 
+              className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-emerald-500/50 z-10"
+              onMouseDown={handleMouseDown}
+            />
+          )}
           <div className="tutorial-tabs flex border-b border-zinc-800 bg-zinc-900">
             <button 
               onClick={() => setIsAnalysisOpen(true)}
@@ -480,52 +584,27 @@ export default function App() {
       <div className="flex-1 relative flex flex-col">
         {/* Top Bar for View Mode */}
         {mode === 'view' && (
-          <div className="absolute top-0 left-0 right-0 p-4 flex justify-between items-center z-20 bg-gradient-to-b from-black/80 to-transparent">
+          <div className="absolute top-0 left-0 right-0 p-4 z-20 bg-gradient-to-b from-black/80 to-transparent flex flex-col gap-4">
+            {/* Header Row: Logo/Name + Pill Menu + Action Buttons */}
+            <div className="flex justify-between items-center w-full gap-4">
+              <div className="flex items-center gap-2">
+                <SpiralLogo size={20} />
+                <h1 className="text-lg font-cursive text-emerald-400 drop-shadow-md">Perfect Cadence</h1>
+              </div>
+              
+            {/* Pill Menu (Horizontal on desktop/landscape) */}
             {!isPlaying && (
-              <>
-                <h1 className="text-xl font-semibold tracking-tight text-emerald-400 drop-shadow-md">Perfect Cadence</h1>
-                
-                {/* Pill Menu */}
-                <div className="flex bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 rounded-full px-1 py-1 shadow-lg">
-                  <a 
-                    href={`?m=${encodedDemos.DEMO}`}
-                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${(markdown === DEMOS.DEMO) ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-                  >
-                    demo
-                  </a>
-                  <a 
-                    href={`?m=${encodedDemos.FOCUS}`}
-                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${markdown === DEMOS.FOCUS ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-                  >
-                    simple
-                  </a>
-                  <a 
-                    href={`?m=${encodedDemos.COSMOS}`}
-                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${markdown === DEMOS.COSMOS ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-                  >
-                    trans
-                  </a>
-                  <a 
-                    href={`?m=${encodedDemos.GEOMETRY}`}
-                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${markdown === DEMOS.GEOMETRY ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-                  >
-                    guided
-                  </a>
-                  <a 
-                    href={`?m=${encodedDemos.ENERGY}`}
-                    className={`px-4 py-1.5 text-xs font-medium rounded-full transition-all ${markdown === DEMOS.ENERGY ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-                  >
-                    spicy
-                  </a>
-                </div>
-              </>
+              <div className="hidden lg:flex bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 rounded-full px-1 py-1 shadow-lg">
+                {presetLinks}
+              </div>
             )}
+            
             <div className="flex gap-2 ml-auto">
               {!isPlaying && (
                 <>
                   <button 
                     onClick={handleShare}
-                    className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
+                    className="tutorial-share-btn p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
                     title="Share Experience"
                   >
                     <Share2 size={16} />
@@ -544,19 +623,28 @@ export default function App() {
                 className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
                 title="Edit Timeline"
               >
-                <Edit3 size={16} /> {!isPlaying && "Edit Timeline"}
+                <Edit3 size={16} /> {!isPlaying && <span className="hidden sm:inline">Edit</span>}
               </button>
               <button 
                 onClick={isPlaying ? handleStop : handlePlay}
-                className={`p-2 rounded-lg flex items-center gap-2 text-sm font-medium backdrop-blur-sm transition-colors ${isPlaying ? 'bg-red-500/80 text-white hover:bg-red-600' : 'bg-emerald-500/80 text-white hover:bg-emerald-600'}`}
+                className={`tutorial-play-btn p-2 rounded-lg flex items-center gap-2 text-sm font-medium backdrop-blur-sm transition-colors ${isPlaying ? 'bg-red-500/80 text-white hover:bg-red-600' : 'bg-emerald-500/80 text-white hover:bg-emerald-600'}`}
                 title={isPlaying ? "Stop" : "Play"}
               >
-                {isPlaying ? <Square size={16} /> : <><Play size={16} /> Play</>}
+                {isPlaying ? <Square size={16} /> : <><Play size={16} /> <span className="hidden sm:inline">Play</span></>}
               </button>
             </div>
           </div>
-        )}
 
+          {/* Presets Row: Vertical in portrait (visible only on mobile/portrait) */}
+          {!isPlaying && (
+            <div className="lg:hidden flex justify-start">
+              <div className="flex flex-col bg-zinc-900/60 backdrop-blur-md border border-zinc-800/50 rounded-2xl px-1 py-1 shadow-lg w-fit">
+                {presetLinks}
+              </div>
+            </div>
+          )}
+          </div>
+        )}
         {/* 3D Canvas */}
         <canvas 
           ref={canvasRef} 
@@ -738,7 +826,10 @@ export default function App() {
                 <button 
                   onClick={() => {
                     setIsHelpOpen(false);
-                    setRunTutorial(true);
+                    setMode('edit');
+                    setTimeout(() => {
+                      setRunTutorial(true);
+                    }, 400);
                   }}
                   className="w-full py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-500/30 rounded-lg text-sm font-medium transition-colors"
                 >
