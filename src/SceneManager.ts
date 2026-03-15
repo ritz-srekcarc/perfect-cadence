@@ -384,6 +384,15 @@ export class SceneManager {
     if (this.textBlock) {
       const baseSize = this.currentConfig?.textSize ?? 100;
       this.applyMarkdownStyling(this.textBlock, text, baseSize);
+      
+      if (this.wordListMainBlock) {
+        this.wordListMainBlock.fontSize = this.textBlock.fontSize;
+        this.wordListMainBlock.fontFamily = this.textBlock.fontFamily;
+        this.wordListMainBlock.shadowColor = this.textBlock.shadowColor;
+        this.wordListMainBlock.shadowBlur = this.textBlock.shadowBlur;
+        this.wordListMainBlock.shadowOffsetX = this.textBlock.shadowOffsetX;
+        this.wordListMainBlock.shadowOffsetY = this.textBlock.shadowOffsetY;
+      }
     }
     if (this.auxTextBlock && this.auxTextPlane) {
       const hasAuxContent = !!auxText || (wordList?.layer === 'aux');
@@ -394,6 +403,16 @@ export class SceneManager {
         } else {
           this.auxTextBlock.text = "";
         }
+        
+        if (this.wordListAuxBlock) {
+          this.wordListAuxBlock.fontSize = this.auxTextBlock.fontSize;
+          this.wordListAuxBlock.fontFamily = this.auxTextBlock.fontFamily;
+          this.wordListAuxBlock.shadowColor = this.auxTextBlock.shadowColor;
+          this.wordListAuxBlock.shadowBlur = this.auxTextBlock.shadowBlur;
+          this.wordListAuxBlock.shadowOffsetX = this.auxTextBlock.shadowOffsetX;
+          this.wordListAuxBlock.shadowOffsetY = this.auxTextBlock.shadowOffsetY;
+        }
+        
         this.auxTextPlane.isVisible = true;
       } else {
         this.auxTextBlock.text = "";

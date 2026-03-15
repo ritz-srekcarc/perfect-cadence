@@ -137,7 +137,13 @@ export default function App() {
       localStorage.setItem('hasSeenSeizureWarning', 'true');
     }
     setShowWarning(false);
-    if (isFirstVisit) {
+    
+    const params = new URLSearchParams(window.location.search);
+    const m = params.get('m');
+    const encodedDemo = LZString.compressToEncodedURIComponent(DEMO_MARKDOWN);
+    const shouldBypass = m && m !== encodedDemo;
+
+    if (isFirstVisit && !shouldBypass) {
       setMarkdown(DEMO_MARKDOWN);
       setMode('edit');
       // Add a small delay to allow the sidebar transition to complete

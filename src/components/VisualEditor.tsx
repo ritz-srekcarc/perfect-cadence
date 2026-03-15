@@ -464,13 +464,13 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
 
                   <div className="flex flex-col gap-1 pt-2 border-t border-zinc-800">
                     <label className="text-xs text-zinc-500">Custom Audio URL</label>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2 min-w-0">
                       <input 
                         type="text" 
                         placeholder="https://... or drop an audio/video file anywhere"
                         value={seg.config.audioUrl || ''} 
                         onChange={(e) => updateConfig(index, 'audioUrl', e.target.value)} 
-                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" 
+                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0" 
                       />
                       <button
                         onClick={handleTranscribe}
