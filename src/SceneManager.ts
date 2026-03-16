@@ -4,16 +4,26 @@ import { SegmentConfig, MediaItem } from './timelineParser';
 import { parseMarkdownText } from './markdownRenderer';
 import { createControlForLine, createControlsForWords } from './textRenderer';
 
+/**
+ * SceneManager
+ * 
+ * Responsible for managing the Babylon.js 3D engine, scene creation, 
+ * WebXR integration, and real-time visual updates based on timeline configurations.
+ */
 export class SceneManager {
+  // --- Core Babylon.js Components ---
   private engine: Engine;
   private scene: Scene;
   private camera: ArcRotateCamera;
+  
+  // --- WebXR Components ---
   private xr: WebXRDefaultExperience | null = null;
   private xrUIPanel: Mesh | null = null;
   private xrUITexture: GUI.AdvancedDynamicTexture | null = null;
   private xrSegmentText: GUI.TextBlock | null = null;
   private xrProgressText: GUI.TextBlock | null = null;
   
+  // --- Public Callbacks (for UI integration) ---
   public onPlayPause?: () => void;
   public onNext?: () => void;
   public onPrev?: () => void;
@@ -21,6 +31,7 @@ export class SceneManager {
   public onVolumeUp?: () => void;
   public onVolumeDown?: () => void;
 
+  // --- Internal State ---
   private currentMeshes: any[] = [];
   private patternRoot: Mesh | null = null;
   private textPlane: any = null;
@@ -42,6 +53,10 @@ export class SceneManager {
     return this.scene;
   }
 
+  /**
+   * Constructor
+   * Initializes the engine, scene, camera, and starts the render loop.
+   */
   constructor(canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true);
     this.scene = new Scene(this.engine);
@@ -59,8 +74,11 @@ export class SceneManager {
     this.setupGUI();
     this.initXR();
 
+    // Main Render Loop
     this.engine.runRenderLoop(() => {
       this.time += this.engine.getDeltaTime() * 0.001;
+      
+      // Pause videos if segment duration is exceeded
       if (this.time > this.segmentDuration) {
         this.mediaMeshes.forEach(m => {
           if (m.material && m.material.diffuseTexture instanceof VideoTexture) {
@@ -68,6 +86,7 @@ export class SceneManager {
           }
         });
       }
+      
       this.updateCamera();
       this.updatePattern();
       this.updateTextAnimation();
@@ -465,6 +484,11 @@ export class SceneManager {
     });
   }
 
+  /**
+   * applyConfig
+   * Updates the scene visuals based on the provided segment configuration.
+   * Handles pattern switching, camera adjustments, and text positioning.
+   */
   public applyConfig(config: SegmentConfig) {
     const prevConfig = this.currentConfig;
     this.currentConfig = config;

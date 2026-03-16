@@ -7,6 +7,13 @@ import Prism from 'prismjs';
 import 'prismjs/components/prism-markdown';
 import 'prismjs/themes/prism-tomorrow.css';
 
+/**
+ * VisualEditor
+ * 
+ * Provides a GUI for editing the timeline segments.
+ * Allows users to modify configuration parameters and markdown content
+ * without manually editing the markdown string.
+ */
 interface VisualEditorProps {
   segments: TimelineSegment[];
   onChange: (segments: TimelineSegment[]) => void;
@@ -23,6 +30,11 @@ interface SegmentEditorProps {
   removeSegment: (index: number) => void;
 }
 
+/**
+ * SegmentEditor
+ * 
+ * A sub-component for editing a single segment within the VisualEditor.
+ */
 function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown, moveSegment, removeSegment }: SegmentEditorProps) {
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const [isAdvancedAnimOpen, setIsAdvancedAnimOpen] = useState(false);

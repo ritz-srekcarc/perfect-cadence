@@ -38,17 +38,31 @@ const SpiralLogo = ({ size = 20, className = "" }: { size?: number, className?: 
   </svg>
 );
 
+/**
+ * Main Application Component
+ * 
+ * Perfect Cadence is a sensory synthesis engine that combines 3D visuals, 
+ * audio frequencies, and text-to-speech into an immersive experience.
+ * This component manages the global state, playback logic, and UI layout.
+ */
 export default function App() {
+  // --- Refs ---
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneManagerRef = useRef<SceneManager | null>(null);
+  const speechAudioRef = useRef<HTMLAudioElement | null>(null);
   
+  // --- State Management ---
+  
+  // Timeline and Playback State
   const [markdown, setMarkdown] = useState(DEFAULT_MARKDOWN);
   const [segments, setSegments] = useState<TimelineSegment[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentSegmentIndex, setCurrentSegmentIndex] = useState(0);
+  const [timeElapsed, setTimeElapsed] = useState(0);
+  
+  // UI and Layout State
   const [mode, setMode] = useState<'edit' | 'view'>('view');
   const [activeTab, setActiveTab] = useState<'markdown' | 'visual'>('visual');
-  const [timeElapsed, setTimeElapsed] = useState(0);
   const [copied, setCopied] = useState(false);
   const [isHelpOpen, setIsHelpOpen] = useState(false);
   const [isAnalysisOpen, setIsAnalysisOpen] = useState(false);
@@ -56,17 +70,21 @@ export default function App() {
   const [showWarning, setShowWarning] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(false);
   const [runTutorial, setRunTutorial] = useState(false);
-  const [kokoro, setKokoro] = useState<any>(null);
-  const speechAudioRef = useRef<HTMLAudioElement | null>(null);
-  const [encryptedPayload, setEncryptedPayload] = useState<string | null>(null);
-  const [decryptionPassword, setDecryptionPassword] = useState('');
-  const [decryptionError, setDecryptionError] = useState('');
-  const [isDecrypting, setIsDecrypting] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(400);
   const [isDragging, setIsDragging] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  // External Services and Security State
+  const [kokoro, setKokoro] = useState<any>(null);
+  const [encryptedPayload, setEncryptedPayload] = useState<string | null>(null);
+  const [decryptionPassword, setDecryptionPassword] = useState('');
+  const [decryptionError, setDecryptionError] = useState('');
+  const [isDecrypting, setIsDecrypting] = useState(false);
+
+  /**
+   * Handle window resize to update mobile state
+   */
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
@@ -75,6 +93,9 @@ export default function App() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  /**
+   * Mouse handlers for draggable sidebar
+   */
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
     document.addEventListener('mousemove', handleMouseMove);
@@ -129,6 +150,9 @@ export default function App() {
     }
   };
 
+  /**
+   * Initialize Neural Voice Engine and Onboarding Logic
+   */
   useEffect(() => {
     const initKokoro = async () => {
       try {
@@ -155,6 +179,9 @@ export default function App() {
     }
   }, []);
 
+  /**
+   * Dismiss seizure warning and potentially start tutorial
+   */
   const handleCloseWarning = (dontShowAgain: boolean) => {
     if (dontShowAgain) {
       localStorage.setItem('hasSeenSeizureWarning', 'true');
@@ -176,6 +203,9 @@ export default function App() {
     }
   };
 
+  /**
+   * Utility: Encode markdown to URL-safe string
+   */
   const encodeMarkdown = (md: string) => {
     try {
       return LZString.compressToEncodedURIComponent(md);
@@ -185,6 +215,9 @@ export default function App() {
     }
   };
 
+  /**
+   * Utility: Decode markdown from URL-safe string
+   */
   const decodeMarkdown = (encoded: string) => {
     try {
       const decoded = LZString.decompressFromEncodedURIComponent(encoded);
@@ -258,6 +291,9 @@ export default function App() {
     </>
   );
 
+  /**
+   * Initial Load: Parse URL parameters for markdown or encrypted payloads
+   */
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const encoded = params.get('m');
@@ -342,6 +378,10 @@ export default function App() {
     }
   };
 
+  /**
+   * Scene Initialization and Event Binding
+   * Sets up the SceneManager and binds callbacks for VR/XR interactions.
+   */
   useEffect(() => {
     if (canvasRef.current && !sceneManagerRef.current) {
       const sm = new SceneManager(canvasRef.current);
@@ -405,12 +445,18 @@ export default function App() {
         sceneManagerRef.current = null;
       }
     };
-  }, [segments.length]); // Re-bind if segments change, but mostly we just need the refs to be stable
+  }, [segments.length]);
 
+  /**
+   * Parse Markdown into Timeline Segments
+   */
   useEffect(() => {
     setSegments(parseTimeline(markdown));
   }, [markdown]);
 
+  /**
+   * Initial Scene State (Preview Mode)
+   */
   useEffect(() => {
     if (!isPlaying && sceneManagerRef.current && segments.length > 0) {
       const currentSegment = segments[0];
@@ -421,7 +467,9 @@ export default function App() {
     }
   }, [segments, isPlaying]);
 
-  // Handle segment transitions
+  /**
+   * Playback Logic: Handle Segment Transitions
+   */
   useEffect(() => {
     if (isPlaying && segments.length > 0) {
       const currentSegment = segments[currentSegmentIndex];
@@ -438,6 +486,10 @@ export default function App() {
     }
   }, [timeElapsed, isPlaying, currentSegmentIndex, segments]);
 
+  /**
+   * Main Playback Loop
+   * Updates scene visuals, audio parameters, and handles TTS triggers.
+   */
   useEffect(() => {
     let interval: number | undefined;
     if (isPlaying && segments.length > 0) {

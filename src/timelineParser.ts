@@ -1,3 +1,14 @@
+/**
+ * Timeline Parser
+ * 
+ * Handles the conversion between the markdown-based timeline format 
+ * and the structured TimelineSegment objects used by the application.
+ */
+
+/**
+ * Configuration for a single segment of the timeline.
+ * Controls visuals, camera, text animations, and audio.
+ */
 export interface SegmentConfig {
   duration: number; // in seconds
   pattern: 'spiral' | 'tunnel' | 'fractal' | 'particles' | 'rings' | 'mandala' | 'kaleidoscope' | 'waves' | 'pulse' | string;
@@ -109,6 +120,9 @@ metronome: 0
 
 `;
 
+/**
+ * Parses a single segment's markdown content to extract text, aux text, and media.
+ */
 export function parseSegmentContent(rawMarkdown: string) {
   let text = rawMarkdown;
   const media: MediaItem[] = [];
@@ -221,6 +235,10 @@ export const SYNTAX_DOCS = {
   wordList: "!{interval,count}(list,of,words) - interval in seconds, count of words to display at once"
 };
 
+/**
+ * Parses the entire markdown timeline into an array of TimelineSegment objects.
+ * Handles configuration inheritance between segments.
+ */
 export function parseTimeline(markdown: string): TimelineSegment[] {
   const segments: TimelineSegment[] = [];
   const parts = markdown.split(/^\s*---\s*$/gm);
@@ -285,6 +303,10 @@ export function parseTimeline(markdown: string): TimelineSegment[] {
   return segments;
 }
 
+/**
+ * Serializes an array of TimelineSegment objects back into the markdown format.
+ * Optimizes the output by only including configuration changes between segments.
+ */
 export function serializeTimeline(segments: TimelineSegment[]): string {
   let lastConfig: Partial<SegmentConfig> = {};
   
