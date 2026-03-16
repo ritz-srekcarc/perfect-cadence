@@ -43,6 +43,9 @@ export interface SegmentConfig {
   ampModulation?: number;
   metronome: number; // BPM, 0 for off
   audioUrl?: string; // Custom audio URL
+  speech_synth?: boolean;
+  speech_voice?: string;
+  speech_speed?: number;
 }
 
 export interface MediaItem {
@@ -83,6 +86,7 @@ duration: 10
 pattern: particles
 patternType: default
 patternComplexity: 1.0
+patternScale:2
 patternColor1: #ffffff
 camera: orbit
 cameraSpeed: 0.2
@@ -90,13 +94,14 @@ cameraRadius: 30
 textSize: 24
 textDistance: 20
 textAnimType: fade
-binaural: focus
+binaural: off
 metronome: 0
 \`\`\`
 
 # Perfect Cadence
-Ready to begin.
-Load a preset or start typing.
+*Ready* **to** ***begin.***
+> *Load* a **preset** or ***start typing.***
+
 `;
 
 export function parseSegmentContent(rawMarkdown: string) {
@@ -233,9 +238,9 @@ export function parseTimeline(markdown: string): TimelineSegment[] {
         if (key && valueParts.length > 0) {
           const val = valueParts.join(':').trim();
           const k = key.trim() as keyof SegmentConfig;
-          if (k === 'duration' || k === 'metronome' || k === 'carrierFreq' || k === 'beatFreq' || k === 'ampModulation' || k === 'cameraSpeed' || k === 'patternSpeed' || k === 'patternScale' || k === 'patternComplexity' || k === 'cameraRadius' || k === 'cameraHeight' || k === 'cameraTargetX' || k === 'cameraTargetY' || k === 'cameraTargetZ' || k === 'cameraFov' || k === 'textDistance' || k === 'textSize' || k === 'textAnimSpeed' || k === 'textAnimIntensity' || k === 'auxDistance' || k === 'auxSize' || k === 'auxAnimSpeed' || k === 'auxAnimIntensity') {
+          if (k === 'duration' || k === 'metronome' || k === 'carrierFreq' || k === 'beatFreq' || k === 'ampModulation' || k === 'cameraSpeed' || k === 'patternSpeed' || k === 'patternScale' || k === 'patternComplexity' || k === 'cameraRadius' || k === 'cameraHeight' || k === 'cameraTargetX' || k === 'cameraTargetY' || k === 'cameraTargetZ' || k === 'cameraFov' || k === 'textDistance' || k === 'textSize' || k === 'textAnimSpeed' || k === 'textAnimIntensity' || k === 'auxDistance' || k === 'auxSize' || k === 'auxAnimSpeed' || k === 'auxAnimIntensity' || k === 'speech_speed') {
             (config as any)[k] = parseFloat(val);
-          } else if (k === 'textShading' || k === 'textBackdrop' || k === 'auxShading' || k === 'auxBackdrop') {
+          } else if (k === 'textShading' || k === 'textBackdrop' || k === 'auxShading' || k === 'auxBackdrop' || k === 'speech_synth') {
             (config as any)[k] = val === 'true';
           } else {
             (config as any)[k] = val;
@@ -276,7 +281,7 @@ export function serializeTimeline(segments: TimelineSegment[]): string {
     let configStr = '';
     const c = seg.config as any;
     
-    const keys = ['duration', 'pattern', 'patternType', 'patternSpeed', 'patternScale', 'patternComplexity', 'patternColor1', 'patternColor2', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl'];
+    const keys = ['duration', 'pattern', 'patternType', 'patternSpeed', 'patternScale', 'patternComplexity', 'patternColor1', 'patternColor2', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
     
     for (const key of keys) {
       if (c[key] !== undefined && (index === 0 || c[key] !== (lastConfig as any)[key])) {

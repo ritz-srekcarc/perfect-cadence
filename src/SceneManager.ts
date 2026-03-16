@@ -286,7 +286,7 @@ export class SceneManager {
     this.textTexture.addControl(this.textBackground);
 
     this.textBlock = new GUI.TextBlock();
-    this.textBlock.text = "Welcome";
+    this.textBlock.text = "";
     this.textBlock.color = "white";
     this.textBlock.fontSize = 100;
     this.textBlock.textWrapping = true;

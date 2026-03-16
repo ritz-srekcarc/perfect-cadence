@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, Square, Edit3, Eye, Settings, Share2, HelpCircle, X, Ear, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { KokoroTTS } from 'kokoro-js';
 import Editor from 'react-simple-code-editor';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-markdown';
@@ -54,6 +55,8 @@ export default function App() {
   const [showWarning, setShowWarning] = useState(false);
   const [isFirstVisit, setIsFirstVisit] = useState(false);
   const [runTutorial, setRunTutorial] = useState(false);
+  const [kokoro, setKokoro] = useState<any>(null);
+  const speechAudioRef = useRef<HTMLAudioElement | null>(null);
   const [encryptedPayload, setEncryptedPayload] = useState<string | null>(null);
   const [decryptionPassword, setDecryptionPassword] = useState('');
   const [decryptionError, setDecryptionError] = useState('');
@@ -125,6 +128,16 @@ export default function App() {
   };
 
   useEffect(() => {
+    const initKokoro = async () => {
+      try {
+        const k = await KokoroTTS.from_pretrained('hexgrad/kokoro-onnx', { dtype: 'fp32' });
+        setKokoro(k);
+      } catch (e) {
+        console.error("Failed to initialize Kokoro", e);
+      }
+    };
+    initKokoro();
+    
     const hasSeenWarning = localStorage.getItem('hasSeenSeizureWarning');
     if (!hasSeenWarning) {
       setIsFirstVisit(true);
@@ -384,6 +397,16 @@ export default function App() {
     setSegments(parseTimeline(markdown));
   }, [markdown]);
 
+  useEffect(() => {
+    if (!isPlaying && sceneManagerRef.current && segments.length > 0) {
+      const currentSegment = segments[0];
+      sceneManagerRef.current.applyConfig(currentSegment.config);
+      sceneManagerRef.current.updateText(currentSegment.text, currentSegment.auxText, currentSegment.wordList);
+      sceneManagerRef.current.updateMedia(currentSegment.media);
+      sceneManagerRef.current.updateXRProgress(0, currentSegment.config.duration);
+    }
+  }, [segments, isPlaying]);
+
   // Handle segment transitions
   useEffect(() => {
     if (isPlaying && segments.length > 0) {
@@ -425,6 +448,23 @@ export default function App() {
       );
       audioEngine.playMetronome(currentSegment.config.metronome);
       
+      if (currentSegment.config.speech_synth && kokoro) {
+        if (speechAudioRef.current) {
+          speechAudioRef.current.pause();
+          speechAudioRef.current.currentTime = 0;
+        }
+        kokoro.generate(currentSegment.text, { 
+          voice: currentSegment.config.speech_voice || 'af_heart',
+          speed: currentSegment.config.speech_speed || 1
+        }).then((audio: any) => {
+          // Play audio
+          const blob = new Blob([audio.data], { type: 'audio/wav' });
+          const url = URL.createObjectURL(blob);
+          speechAudioRef.current = new Audio(url);
+          speechAudioRef.current.play();
+        });
+      }
+      
       if (currentSegment.config.audioUrl) {
         audioEngine.playCustomAudio(currentSegment.config.audioUrl);
       } else {
@@ -442,6 +482,11 @@ export default function App() {
       }, 1000);
     } else {
       audioEngine.stopAll();
+      if (speechAudioRef.current) {
+        speechAudioRef.current.pause();
+        speechAudioRef.current.currentTime = 0;
+        speechAudioRef.current = null;
+      }
     }
 
     return () => {
@@ -844,7 +889,20 @@ export default function App() {
               </div>
             </div>
 
-            <h3 className="text-zinc-100 mt-0">Timeline Syntax</h3>
+            <div className="mb-6 p-4 bg-zinc-950 border border-zinc-800 rounded-xl">
+              <p className="text-zinc-300 text-xs mb-2">Connect your AI tools to Perfect Cadence using our MCP server:</p>
+              <code className="block text-[10px] text-emerald-400 bg-zinc-900 p-2 rounded mb-2 break-all">https://ais-pre-2kxqoel2yzu23dr7e65zcl-267498015843.us-west2.run.app/mcp/mcp.json</code>
+              <a 
+                href="https://staticmcp.com/docs/standard" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 text-emerald-400 hover:text-emerald-300 font-medium no-underline text-xs"
+              >
+                Learn more about StaticMCP →
+              </a>
+            </div>
+
+            <h3 className="text-zinc-100 mt-6">Timeline Syntax</h3>
             <p className="text-zinc-400">Separate segments with <code>---</code>.</p>
             <p className="text-zinc-400">Configure a segment using a <code>```config</code> block. If omitted, it inherits the previous segment's config.</p>
             <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs"><code>{`\`\`\`config

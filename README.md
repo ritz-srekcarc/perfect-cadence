@@ -34,5 +34,11 @@ Perfect Cadence is a professional-grade hypnotic visualizer and meditation tool 
 
 ## More Information
 
+- [Perfect Cadence MCP Server](https://staticmcp.com/docs/standard)
 - [Contributing Guidelines](CONTRIBUTING.md)
 - [License Information](LICENSE.md)
+
+### MCP Server
+Perfect Cadence includes a statically compiled MCP server. During the build process (`npm run build`), the MCP hierarchy is generated and nested under `/dist/mcp`. This allows AI models to access documentation about Perfect Cadence's syntax and features.
+
+To use it, configure your MCP client to point to the `mcp.json` file in your deployed `dist/mcp` directory.
