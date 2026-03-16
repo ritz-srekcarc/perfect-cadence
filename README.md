@@ -21,7 +21,14 @@ Perfect Cadence is a professional-grade hypnotic visualizer and meditation tool 
 ### 📝 Timeline System
 - **Markdown-Based:** Define your experience using a simple Markdown syntax with `---` separators.
 - **Rich Text & Media:** Support for Markdown headers (`#`), emphasis (`**bold**`, `*italic*`), blockquotes (`> aux text`), images, and videos (`![opacity](url)`).
-- **Wordlists:** Display a sequence of words with customizable intervals and patterns (`!{interval,pattern}(list,of,words)`). Includes pre-built hypnotic lists (`relax`, `focus`, `sleep`, `confidence`, `energy`).
+- **Wordlists:** Display a sequence of words with customizable intervals and word counts (`!{interval,count}(list,of,words)`). Includes pre-built hypnotic lists (`relax`, `focus`, `sleep`, `confidence`, `energy`). Example: `!{3,4}(relax)` displays 4 words at 4 equally spaced positions from the "relax" wordlist along the segment text display pattern for 3 seconds, then displays 4 different words at new positions for 3 seconds.
+- **Text Display Patterns:** The text layer and aux layer can be configured to use different display patterns (`center`, `scatter`, `random`, `spiral`, `march`).
+  - `center`: Places the text at the center of the camera for the aux layer and the center of the pattern for the text layer (default).
+  - `scatter`: Places the text randomly in a circle near the center of the camera for the aux layer or inside the pattern for the text layer.
+  - `random`: Places the text randomly on the camera for the aux layer or in the currently visible world area for the main text layer.
+  - `spiral`: Places the text in a spiral pattern on the camera for the aux layer or within the pattern for the main text layer.
+  - `march`: Places the text in a march (linear grid pattern) on the camera for the aux layer or within the pattern for the main layer.
+- **Face Camera Options:** Both the main text layer and the background pattern can be configured to always face the camera (`textFaceCamera` and `patternFaceCamera`). This is especially useful for hypnotic patterns or text that needs to remain readable regardless of camera movement. Both options now default to true to ensure maximum visibility.
 - **Visual Editor:** A user-friendly interface to manage segments, colors, patterns, and audio without writing code. Now features a full Markdown editor with syntax highlighting for each segment.
 - **Text Animations:** Bring your words to life with effects like Zoom, Fade, Float, Warp, Prism, and the high-energy Glitch animation.
 

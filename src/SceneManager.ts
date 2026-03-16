@@ -1,6 +1,8 @@
 import { Engine, Scene, Vector3, HemisphericLight, ArcRotateCamera, MeshBuilder, Mesh, StandardMaterial, Color3, Texture, DynamicTexture, WebXRDefaultExperience, WebXRState, SceneLoader, TransformNode, ParticleSystem, ShaderMaterial, Effect, VertexBuffer, VideoTexture, WebXRSessionManager } from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import { SegmentConfig, MediaItem } from './timelineParser';
+import { parseMarkdownText } from './markdownRenderer';
+import { createControlForLine, createControlsForWords } from './textRenderer';
 
 export class SceneManager {
   private engine: Engine;
@@ -20,23 +22,25 @@ export class SceneManager {
   public onVolumeDown?: () => void;
 
   private currentMeshes: any[] = [];
+  private patternRoot: Mesh | null = null;
   private textPlane: any = null;
   private textTexture: GUI.AdvancedDynamicTexture | null = null;
   private textBackground: GUI.Rectangle | null = null;
-  private textBlock: GUI.TextBlock | null = null;
+  private textControls: GUI.Control[] = [];
   private auxTextPlane: any = null;
   private auxTextTexture: GUI.AdvancedDynamicTexture | null = null;
   private auxTextBackground: GUI.Rectangle | null = null;
-  private auxTextBlock: GUI.TextBlock | null = null;
-  private wordListMainBlock: GUI.TextBlock | null = null;
-  private wordListAuxBlock: GUI.TextBlock | null = null;
-  private currentWordList: import('./timelineParser').WordList | null = null;
+  private auxTextControls: GUI.Control[] = [];
   private mediaControls: GUI.Image[] = [];
   private mediaMeshes: any[] = [];
   private time: number = 0;
   private segmentDuration: number = 0;
   private currentConfig: SegmentConfig | null = null;
   private particleSystem: ParticleSystem | null = null;
+
+  public getScene(): Scene {
+    return this.scene;
+  }
 
   constructor(canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true);
@@ -285,19 +289,6 @@ export class SceneManager {
     this.textBackground.background = "transparent";
     this.textTexture.addControl(this.textBackground);
 
-    this.textBlock = new GUI.TextBlock();
-    this.textBlock.text = "";
-    this.textBlock.color = "white";
-    this.textBlock.fontSize = 100;
-    this.textBlock.textWrapping = true;
-    this.textBlock.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
-    this.textBlock.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_CENTER;
-    
-    // Default rainbow outline
-    this.textBlock.outlineWidth = 8;
-    
-    this.textBackground.addControl(this.textBlock);
-
     // Create a plane for the aux text (blockquote)
     const auxPlane = MeshBuilder.CreatePlane("auxTextPlane", { width: 20, height: 10 }, this.scene);
     auxPlane.parent = this.camera;
@@ -314,110 +305,81 @@ export class SceneManager {
     this.auxTextBackground.thickness = 0;
     this.auxTextBackground.background = "transparent";
     this.auxTextTexture.addControl(this.auxTextBackground);
+  }
 
-    this.auxTextBlock = new GUI.TextBlock();
-    this.auxTextBlock.text = "";
-    this.auxTextBlock.color = "white";
-    this.auxTextBlock.fontSize = 100;
-    this.auxTextBlock.textWrapping = true;
-    this.auxTextBlock.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
-    this.auxTextBlock.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_CENTER;
-    this.auxTextBlock.outlineWidth = 8;
+  public updateText(text: string, auxText?: string) {
+    if (!this.textBackground || !this.auxTextBackground) return;
+
+    // Clear old text controls
+    this.textControls.forEach(c => c.dispose());
+    this.textControls = [];
+    this.auxTextControls.forEach(c => c.dispose());
+    this.auxTextControls = [];
+
+    const config = this.currentConfig;
+    const baseSize = config?.textSize ?? 100;
+    const auxBaseSize = config?.auxSize ?? 100;
+    const textColor = config?.textColor ?? "#ffffff";
+    const auxColor = config?.auxColor ?? "#ffffff";
+    const textFont = config?.textFont ?? 'sans-serif';
+    const auxFont = config?.auxFont ?? 'sans-serif';
     
-    this.auxTextBackground.addControl(this.auxTextBlock);
+    const textDisplayPattern = config?.textDisplayPattern ?? 'center';
+    const auxDisplayPattern = config?.auxDisplayPattern ?? 'center';
 
-    // Create word list blocks on the same layers
-    this.wordListMainBlock = new GUI.TextBlock();
-    this.wordListMainBlock.text = "";
-    this.wordListMainBlock.color = "white";
-    this.wordListMainBlock.fontSize = 120;
-    this.wordListMainBlock.textWrapping = true;
-    this.wordListMainBlock.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
-    this.wordListMainBlock.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_CENTER;
-    this.wordListMainBlock.outlineWidth = 8;
-    this.wordListMainBlock.isVisible = false;
-    this.textBackground.addControl(this.wordListMainBlock);
+    if (text) {
+      const lines = parseMarkdownText(text);
+      if (textDisplayPattern === 'center') {
+        const stack = new GUI.StackPanel();
+        stack.isVertical = true;
+        stack.horizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+        stack.verticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+        this.textBackground.addControl(stack);
+        this.textControls.push(stack);
 
-    this.wordListAuxBlock = new GUI.TextBlock();
-    this.wordListAuxBlock.text = "";
-    this.wordListAuxBlock.color = "white";
-    this.wordListAuxBlock.fontSize = 100;
-    this.wordListAuxBlock.textWrapping = true;
-    this.wordListAuxBlock.textHorizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
-    this.wordListAuxBlock.textVerticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_CENTER;
-    this.wordListAuxBlock.outlineWidth = 8;
-    this.wordListAuxBlock.isVisible = false;
-    this.auxTextBackground.addControl(this.wordListAuxBlock);
-  }
-
-  private applyMarkdownStyling(block: GUI.TextBlock, text: string, baseFontSize: number) {
-    let cleanText = text;
-    let isHeader = false;
-    let isBold = false;
-    let isItalic = false;
-
-    if (/^#+\s/m.test(cleanText)) {
-      isHeader = true;
-      cleanText = cleanText.replace(/^#+\s/gm, '');
-    }
-    if (/\*\*(.*?)\*\*/g.test(cleanText)) {
-      isBold = true;
-      cleanText = cleanText.replace(/\*\*(.*?)\*\*/g, '$1');
-    }
-    if (/\*(.*?)\*/g.test(cleanText)) {
-      isItalic = true;
-      cleanText = cleanText.replace(/\*(.*?)\*/g, '$1');
-    }
-    if (/_(.*?)_/g.test(cleanText)) {
-      isItalic = true;
-      cleanText = cleanText.replace(/_(.*?)_/g, '$1');
-    }
-
-    block.text = cleanText.trim();
-    block.fontWeight = (isHeader || isBold) ? "bold" : "normal";
-    block.fontStyle = isItalic ? "italic" : "normal";
-    block.fontSize = isHeader ? baseFontSize * 1.5 : baseFontSize;
-  }
-
-  public updateText(text: string, auxText?: string, wordList?: import('./timelineParser').WordList) {
-    this.currentWordList = wordList || null;
-    if (this.textBlock) {
-      const baseSize = this.currentConfig?.textSize ?? 100;
-      this.applyMarkdownStyling(this.textBlock, text, baseSize);
-      
-      if (this.wordListMainBlock) {
-        this.wordListMainBlock.fontSize = this.textBlock.fontSize;
-        this.wordListMainBlock.fontFamily = this.textBlock.fontFamily;
-        this.wordListMainBlock.shadowColor = this.textBlock.shadowColor;
-        this.wordListMainBlock.shadowBlur = this.textBlock.shadowBlur;
-        this.wordListMainBlock.shadowOffsetX = this.textBlock.shadowOffsetX;
-        this.wordListMainBlock.shadowOffsetY = this.textBlock.shadowOffsetY;
-      }
-    }
-    if (this.auxTextBlock && this.auxTextPlane) {
-      const hasAuxContent = !!auxText || (wordList?.layer === 'aux');
-      if (hasAuxContent) {
-        const baseSize = this.currentConfig?.auxSize ?? 100;
-        if (auxText) {
-          this.applyMarkdownStyling(this.auxTextBlock, auxText, baseSize);
-        } else {
-          this.auxTextBlock.text = "";
+        for (const line of lines) {
+          const lineControl = createControlForLine(line, textColor, textFont, baseSize);
+          stack.addControl(lineControl);
         }
-        
-        if (this.wordListAuxBlock) {
-          this.wordListAuxBlock.fontSize = this.auxTextBlock.fontSize;
-          this.wordListAuxBlock.fontFamily = this.auxTextBlock.fontFamily;
-          this.wordListAuxBlock.shadowColor = this.auxTextBlock.shadowColor;
-          this.wordListAuxBlock.shadowBlur = this.auxTextBlock.shadowBlur;
-          this.wordListAuxBlock.shadowOffsetX = this.auxTextBlock.shadowOffsetX;
-          this.wordListAuxBlock.shadowOffsetY = this.auxTextBlock.shadowOffsetY;
-        }
-        
-        this.auxTextPlane.isVisible = true;
       } else {
-        this.auxTextBlock.text = "";
-        this.auxTextPlane.isVisible = false;
+        // scatter, random, spiral, march
+        for (const line of lines) {
+          const words = createControlsForWords(line, textColor, textFont, baseSize);
+          for (const word of words) {
+            this.textBackground.addControl(word);
+            this.textControls.push(word);
+          }
+        }
       }
+    }
+
+    if (auxText) {
+      this.auxTextPlane.isVisible = true;
+      const lines = parseMarkdownText(auxText);
+      if (auxDisplayPattern === 'center') {
+        const stack = new GUI.StackPanel();
+        stack.isVertical = true;
+        stack.horizontalAlignment = GUI.Control.HORIZONTAL_ALIGNMENT_CENTER;
+        stack.verticalAlignment = GUI.Control.VERTICAL_ALIGNMENT_CENTER;
+        this.auxTextBackground.addControl(stack);
+        this.auxTextControls.push(stack);
+
+        for (const line of lines) {
+          const lineControl = createControlForLine(line, auxColor, auxFont, auxBaseSize);
+          stack.addControl(lineControl);
+        }
+      } else {
+        // scatter, random, spiral, march
+        for (const line of lines) {
+          const words = createControlsForWords(line, auxColor, auxFont, auxBaseSize);
+          for (const word of words) {
+            this.auxTextBackground.addControl(word);
+            this.auxTextControls.push(word);
+          }
+        }
+      }
+    } else {
+      this.auxTextPlane.isVisible = false;
     }
   }
 
@@ -518,6 +480,7 @@ export class SceneManager {
     
     if (patternChanged) {
       this.clearCurrentMeshes();
+      this.patternRoot = new Mesh("patternRoot", this.scene);
       switch (config.pattern) {
         case 'spiral':
           this.createSpiral();
@@ -545,6 +508,12 @@ export class SceneManager {
           this.createPulse();
           break;
       }
+      
+      this.currentMeshes.forEach(m => {
+        if (!m.parent) {
+          m.parent = this.patternRoot;
+        }
+      });
     }
 
     // Apply text config
@@ -559,31 +528,6 @@ export class SceneManager {
       this.textPlane.scaling = new Vector3(scale, scale, scale);
     }
     
-    if (this.textBlock) {
-      this.textBlock.fontSize = config.textSize ?? 100;
-      this.textBlock.fontFamily = config.textFont ?? 'sans-serif';
-
-      if (config.textShading) {
-        this.textBlock.shadowColor = "rgba(0,0,0,0.8)";
-        this.textBlock.shadowBlur = 10;
-        this.textBlock.shadowOffsetX = 5;
-        this.textBlock.shadowOffsetY = 5;
-      } else {
-        this.textBlock.shadowBlur = 0;
-        this.textBlock.shadowOffsetX = 0;
-        this.textBlock.shadowOffsetY = 0;
-      }
-
-      if (this.wordListMainBlock) {
-        this.wordListMainBlock.fontSize = this.textBlock.fontSize;
-        this.wordListMainBlock.fontFamily = this.textBlock.fontFamily;
-        this.wordListMainBlock.shadowColor = this.textBlock.shadowColor;
-        this.wordListMainBlock.shadowBlur = this.textBlock.shadowBlur;
-        this.wordListMainBlock.shadowOffsetX = this.textBlock.shadowOffsetX;
-        this.wordListMainBlock.shadowOffsetY = this.textBlock.shadowOffsetY;
-      }
-    }
-    
     if (this.textBackground) {
       this.textBackground.background = config.textBackdrop ? "rgba(0,0,0,0.5)" : "transparent";
     }
@@ -594,31 +538,6 @@ export class SceneManager {
       this.auxTextPlane.position.z = dist;
       const scale = dist / 5;
       this.auxTextPlane.scaling = new Vector3(scale, scale, scale);
-    }
-    
-    if (this.auxTextBlock) {
-      this.auxTextBlock.fontSize = config.auxSize ?? 100;
-      this.auxTextBlock.fontFamily = config.auxFont ?? 'sans-serif';
-
-      if (config.auxShading) {
-        this.auxTextBlock.shadowColor = "rgba(0,0,0,0.8)";
-        this.auxTextBlock.shadowBlur = 10;
-        this.auxTextBlock.shadowOffsetX = 5;
-        this.auxTextBlock.shadowOffsetY = 5;
-      } else {
-        this.auxTextBlock.shadowBlur = 0;
-        this.auxTextBlock.shadowOffsetX = 0;
-        this.auxTextBlock.shadowOffsetY = 0;
-      }
-
-      if (this.wordListAuxBlock) {
-        this.wordListAuxBlock.fontSize = this.auxTextBlock.fontSize;
-        this.wordListAuxBlock.fontFamily = this.auxTextBlock.fontFamily;
-        this.wordListAuxBlock.shadowColor = this.auxTextBlock.shadowColor;
-        this.wordListAuxBlock.shadowBlur = this.auxTextBlock.shadowBlur;
-        this.wordListAuxBlock.shadowOffsetX = this.auxTextBlock.shadowOffsetX;
-        this.wordListAuxBlock.shadowOffsetY = this.auxTextBlock.shadowOffsetY;
-      }
     }
     
     if (this.auxTextBackground) {
@@ -672,6 +591,10 @@ export class SceneManager {
     if (this.particleSystem) {
       this.particleSystem.dispose();
       this.particleSystem = null;
+    }
+    if (this.patternRoot) {
+      this.patternRoot.dispose();
+      this.patternRoot = null;
     }
   }
 
@@ -801,7 +724,7 @@ export class SceneManager {
     
     this.particleSystem = new ParticleSystem("particles", Math.floor(2000 * complexity), this.scene);
     this.particleSystem.particleTexture = new Texture("https://raw.githubusercontent.com/PatrickRyanMS/BabylonJStextures/master/ParticleSystems/Sun/T_Sunflare.png", this.scene);
-    this.particleSystem.emitter = Vector3.Zero();
+    this.particleSystem.emitter = this.patternRoot || Vector3.Zero();
     this.particleSystem.minEmitBox = new Vector3(-5 * scale, -5 * scale, -5 * scale);
     this.particleSystem.maxEmitBox = new Vector3(5 * scale, 5 * scale, 5 * scale);
     this.particleSystem.color1 = this.parseColor(this.currentConfig?.patternColor1, new Color3(0.7, 0.8, 1.0)).toColor4(1);
@@ -949,6 +872,16 @@ export class SceneManager {
   private updatePattern() {
     if (!this.currentConfig) return;
 
+    if (this.patternRoot) {
+      const faceCamera = this.currentConfig.patternFaceCamera ?? true;
+      if (faceCamera) {
+        this.patternRoot.lookAt(this.camera.position);
+        this.patternRoot.rotate(Vector3.Up(), Math.PI);
+      } else {
+        this.patternRoot.rotation = Vector3.Zero();
+      }
+    }
+
     const animSpeed = this.currentConfig.patternSpeed ?? 1.0;
     const type = this.currentConfig.patternType || 'default';
 
@@ -1009,44 +942,120 @@ export class SceneManager {
     }
   }
 
+  private applyDisplayPattern(controls: GUI.Control[], pattern: string, time: number, isAux: boolean) {
+    const width = 2048;
+    const height = 1024;
+    
+    const updateWordList = (c: GUI.Control) => {
+      const wlConfig = (c as any).wordListConfig;
+      if (wlConfig) {
+        const interval = wlConfig.interval || 3;
+        const currentPeriod = Math.floor(time / interval);
+        
+        if ((c as any).wordListPeriod !== currentPeriod) {
+          (c as any).wordListPeriod = currentPeriod;
+          
+          // Pick a word
+          const words = wlConfig.words;
+          const offset = (c as any).wordListIndexOffset || 0;
+          const wordIndex = (currentPeriod * (wlConfig.count || 1) + offset) % words.length;
+          if (c instanceof GUI.TextBlock) {
+            c.text = words[wordIndex] + " "; // Add space for spacing in StackPanel
+          }
+          
+          // Assign a new random seed for this period so it jumps to a new position
+          (c as any).randomSeed = Math.random();
+        }
+      }
+      if (c instanceof GUI.StackPanel) {
+        c.children.forEach(updateWordList);
+      }
+    };
+
+    controls.forEach((c, i) => {
+      // Handle wordlists recursively
+      updateWordList(c);
+
+      if (pattern === 'center') {
+        // Center is handled by StackPanel alignment, no need to set left/top
+        c.left = "0px";
+        c.top = "0px";
+        return;
+      }
+
+      // For other patterns, we need to position them
+      // We use a pseudo-random value based on index or the wordlist's random seed
+      const seed = (c as any).randomSeed ?? (i * 0.618033988749895);
+      
+      if (pattern === 'scatter') {
+        // Randomly in a circle near the center
+        const radius = (seed % 1) * (height * 0.4);
+        const angle = (seed * 13.37) % (Math.PI * 2);
+        c.left = `${Math.cos(angle) * radius}px`;
+        c.top = `${Math.sin(angle) * radius}px`;
+      } else if (pattern === 'random') {
+        // Randomly in the visible area
+        const x = ((seed * 17.1) % 1 - 0.5) * width * 0.8;
+        const y = ((seed * 23.3) % 1 - 0.5) * height * 0.8;
+        c.left = `${x}px`;
+        c.top = `${y}px`;
+      } else if (pattern === 'spiral') {
+        // Spiral pattern
+        const total = controls.length;
+        const angle = i * 0.5 + time * 0.5; // Slowly rotating spiral
+        const radius = (i / total) * (height * 0.4) + 50;
+        c.left = `${Math.cos(angle) * radius}px`;
+        c.top = `${Math.sin(angle) * radius}px`;
+      } else if (pattern === 'march') {
+        // Linear grid pattern
+        const cols = Math.ceil(Math.sqrt(controls.length));
+        const spacingX = width * 0.8 / Math.max(1, cols);
+        const spacingY = height * 0.8 / Math.max(1, cols);
+        const col = i % cols;
+        const row = Math.floor(i / cols);
+        
+        // Marching animation
+        const marchOffset = (time * 50) % spacingY;
+        
+        const startX = -((cols - 1) * spacingX) / 2;
+        const startY = -((cols - 1) * spacingY) / 2;
+        
+        c.left = `${startX + col * spacingX}px`;
+        c.top = `${startY + row * spacingY + marchOffset}px`;
+      }
+    });
+  }
+
   private updateTextAnimation() {
     const config = this.currentConfig;
     const time = this.time;
 
-    if (this.textBlock && this.textPlane) {
-      // If not parented to camera, make it face the camera
+    if (this.textPlane) {
       if (!this.textPlane.parent) {
-        this.textPlane.lookAt(this.camera.position);
-        this.textPlane.rotate(Vector3.Up(), Math.PI); // Flip to face correctly
+        const faceCamera = config?.textFaceCamera ?? true;
+        if (faceCamera) {
+          this.textPlane.lookAt(this.camera.position);
+          this.textPlane.rotate(Vector3.Up(), Math.PI);
+        } else {
+          this.textPlane.rotation = Vector3.Zero();
+        }
       }
 
-      // Text color
-      this.textBlock.color = config?.textColor ?? "#ffffff";
-
-      // Outline animation
       const outlineType = config?.textOutlineType ?? 'none';
+      let outlineColor = config?.textOutlineColor ?? '#000000';
+      let outlineWidth = 0;
       if (outlineType === 'rainbow') {
         const hue = Math.floor((time * 50) % 360);
-        this.textBlock.outlineColor = `hsl(${hue}, 100%, 50%)`;
-        this.textBlock.outlineWidth = 8;
+        outlineColor = `hsl(${hue}, 100%, 50%)`;
+        outlineWidth = 8;
       } else if (outlineType === 'solid') {
-        this.textBlock.outlineColor = config?.textOutlineColor ?? '#000000';
-        this.textBlock.outlineWidth = 8;
-      } else {
-        this.textBlock.outlineWidth = 0;
+        outlineWidth = 8;
       }
 
-      // Advanced animations
       const animType = config?.textAnimType ?? 'none';
       const animSpeed = config?.textAnimSpeed ?? 1.0;
       const animIntensity = config?.textAnimIntensity ?? 1.0;
 
-      // Reset defaults
-      this.textBlock.alpha = 1.0;
-      this.textBlock.rotation = 0;
-      this.textBlock.scaleX = 1.0;
-      this.textBlock.scaleY = 1.0;
-      
       const dist = config?.textDistance ?? 10;
       const baseScale = dist / 5;
       this.textPlane.scaling = new Vector3(baseScale, baseScale, baseScale);
@@ -1055,133 +1064,188 @@ export class SceneManager {
       if (animType === 'zoom') {
         const s = 1.0 + Math.sin(time * 2 * animSpeed) * 0.2 * animIntensity;
         this.textPlane.scaling.scaleInPlace(s);
-      } else if (animType === 'fade') {
-        this.textBlock.alpha = 0.5 + Math.sin(time * 3 * animSpeed) * 0.5 * animIntensity;
       } else if (animType === 'float') {
         this.textPlane.position.y = Math.sin(time * 2 * animSpeed) * 0.5 * animIntensity;
-      } else if (animType === 'warp') {
-        this.textBlock.rotation = Math.sin(time * animSpeed) * 0.1 * animIntensity;
-        this.textBlock.scaleX = 1.0 + Math.sin(time * 4 * animSpeed) * 0.1 * animIntensity;
-        this.textBlock.scaleY = 1.0 + Math.cos(time * 4 * animSpeed) * 0.1 * animIntensity;
-      } else if (animType === 'prism') {
-        this.textBlock.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
-        this.textBlock.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
-        this.textBlock.shadowBlur = 15;
-        this.textBlock.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
       } else if (animType === 'glitch') {
         if (Math.random() > 0.9 - (0.1 * animIntensity)) {
           this.textPlane.position.x = (Math.random() - 0.5) * 0.5 * animIntensity;
           this.textPlane.position.y = (Math.random() - 0.5) * 0.5 * animIntensity;
-          this.textBlock.alpha = Math.random();
-          this.textBlock.color = Math.random() > 0.5 ? "cyan" : "magenta";
         } else {
           this.textPlane.position.x = 0;
           this.textPlane.position.y = 0;
-          this.textBlock.alpha = 1.0;
-          this.textBlock.color = "white";
         }
       }
+
+      const pattern = config?.textDisplayPattern ?? 'center';
+      this.applyDisplayPattern(this.textControls, pattern, time, false);
+
+      const hasShading = config?.textShading ?? false;
+
+      this.textControls.forEach(c => {
+        if (c instanceof GUI.TextBlock) {
+          c.outlineColor = outlineColor;
+          c.outlineWidth = outlineWidth;
+          if (hasShading) {
+            c.shadowColor = "rgba(0,0,0,0.8)";
+            c.shadowBlur = 10;
+            c.shadowOffsetX = 5;
+            c.shadowOffsetY = 5;
+          } else {
+            c.shadowBlur = 0;
+            c.shadowOffsetX = 0;
+            c.shadowOffsetY = 0;
+          }
+        } else if (c instanceof GUI.StackPanel) {
+          c.children.forEach(child => {
+            if (child instanceof GUI.TextBlock) {
+              child.outlineColor = outlineColor;
+              child.outlineWidth = outlineWidth;
+              if (hasShading) {
+                child.shadowColor = "rgba(0,0,0,0.8)";
+                child.shadowBlur = 10;
+                child.shadowOffsetX = 5;
+                child.shadowOffsetY = 5;
+              } else {
+                child.shadowBlur = 0;
+                child.shadowOffsetX = 0;
+                child.shadowOffsetY = 0;
+              }
+            }
+          });
+        }
+
+        c.alpha = 1.0;
+        c.rotation = 0;
+        c.scaleX = 1.0;
+        c.scaleY = 1.0;
+
+        if (animType === 'fade') {
+          c.alpha = 0.5 + Math.sin(time * 3 * animSpeed) * 0.5 * animIntensity;
+        } else if (animType === 'warp') {
+          c.rotation = Math.sin(time * animSpeed) * 0.1 * animIntensity;
+          c.scaleX = 1.0 + Math.sin(time * 4 * animSpeed) * 0.1 * animIntensity;
+          c.scaleY = 1.0 + Math.cos(time * 4 * animSpeed) * 0.1 * animIntensity;
+        } else if (animType === 'prism') {
+          if (c instanceof GUI.TextBlock) {
+            c.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
+            c.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
+            c.shadowBlur = 15;
+            c.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
+          }
+        } else if (animType === 'glitch') {
+          if (Math.random() > 0.9 - (0.1 * animIntensity)) {
+            c.alpha = Math.random();
+            if (c instanceof GUI.TextBlock) c.color = Math.random() > 0.5 ? "cyan" : "magenta";
+          } else {
+            c.alpha = 1.0;
+            if (c instanceof GUI.TextBlock) c.color = config?.textColor ?? "white";
+          }
+        }
+      });
     }
 
-    if (this.auxTextBlock && this.auxTextPlane && this.auxTextPlane.isVisible) {
-      // Aux Text color
-      this.auxTextBlock.color = config?.auxColor ?? "#ffffff";
-
-      // Outline animation
+    if (this.auxTextPlane && this.auxTextPlane.isVisible) {
       const outlineType = config?.auxOutlineType ?? 'none';
+      let outlineColor = config?.auxOutlineColor ?? '#000000';
+      let outlineWidth = 0;
       if (outlineType === 'rainbow') {
         const hue = Math.floor((time * 50) % 360);
-        this.auxTextBlock.outlineColor = `hsl(${hue}, 100%, 50%)`;
-        this.auxTextBlock.outlineWidth = 8;
+        outlineColor = `hsl(${hue}, 100%, 50%)`;
+        outlineWidth = 8;
       } else if (outlineType === 'solid') {
-        this.auxTextBlock.outlineColor = config?.auxOutlineColor ?? '#000000';
-        this.auxTextBlock.outlineWidth = 8;
-      } else {
-        this.auxTextBlock.outlineWidth = 0;
+        outlineWidth = 8;
       }
 
-      // Advanced animations
       const animType = config?.auxAnimType ?? 'none';
       const animSpeed = config?.auxAnimSpeed ?? 1.0;
       const animIntensity = config?.auxAnimIntensity ?? 1.0;
 
-      // Reset defaults
-      this.auxTextBlock.alpha = 1.0;
-      this.auxTextBlock.rotation = 0;
-      this.auxTextBlock.scaleX = 1.0;
-      this.auxTextBlock.scaleY = 1.0;
-      
       const dist = config?.auxDistance ?? 10;
       const baseScale = dist / 5;
       this.auxTextPlane.scaling = new Vector3(baseScale, baseScale, baseScale);
-      // Offset aux text slightly below main text by default if not animated
       this.auxTextPlane.position.y = -2;
 
       if (animType === 'zoom') {
         const s = 1.0 + Math.sin(time * 2 * animSpeed) * 0.2 * animIntensity;
         this.auxTextPlane.scaling.scaleInPlace(s);
-      } else if (animType === 'fade') {
-        this.auxTextBlock.alpha = 0.5 + Math.sin(time * 3 * animSpeed) * 0.5 * animIntensity;
       } else if (animType === 'float') {
         this.auxTextPlane.position.y = -2 + Math.sin(time * 2 * animSpeed) * 0.5 * animIntensity;
-      } else if (animType === 'warp') {
-        this.auxTextBlock.rotation = Math.sin(time * animSpeed) * 0.1 * animIntensity;
-        this.auxTextBlock.scaleX = 1.0 + Math.sin(time * 4 * animSpeed) * 0.1 * animIntensity;
-        this.auxTextBlock.scaleY = 1.0 + Math.cos(time * 4 * animSpeed) * 0.1 * animIntensity;
-      } else if (animType === 'prism') {
-        this.auxTextBlock.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
-        this.auxTextBlock.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
-        this.auxTextBlock.shadowBlur = 15;
-        this.auxTextBlock.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
       } else if (animType === 'glitch') {
         if (Math.random() > 0.9 - (0.1 * animIntensity)) {
           this.auxTextPlane.position.x = (Math.random() - 0.5) * 0.5 * animIntensity;
           this.auxTextPlane.position.y = -2 + (Math.random() - 0.5) * 0.5 * animIntensity;
-          this.auxTextBlock.alpha = Math.random();
-          this.auxTextBlock.color = Math.random() > 0.5 ? "cyan" : "magenta";
         } else {
           this.auxTextPlane.position.x = 0;
           this.auxTextPlane.position.y = -2;
-          this.auxTextBlock.alpha = 1.0;
-          this.auxTextBlock.color = "white";
         }
       }
-    }
 
-    if (this.wordListMainBlock) this.wordListMainBlock.isVisible = false;
-    if (this.wordListAuxBlock) this.wordListAuxBlock.isVisible = false;
+      const pattern = config?.auxDisplayPattern ?? 'center';
+      this.applyDisplayPattern(this.auxTextControls, pattern, time, true);
 
-    if (this.currentWordList) {
-      const wl = this.currentWordList;
-      const wordIndex = Math.floor(time / wl.interval);
-      
-      if (wordIndex < wl.words.length) {
-        const activeBlock = wl.layer === 'aux' ? this.wordListAuxBlock : this.wordListMainBlock;
-        if (activeBlock) {
-          activeBlock.text = wl.words[wordIndex];
-          activeBlock.isVisible = true;
-          
-          // Handle pattern
-          if (wl.pattern === 'scatter') {
-            // Use wordIndex to seed a pseudo-random position so it stays still for the duration of the word
-            const seed = wordIndex * 123.456;
-            const rx = (Math.sin(seed) - 0.5) * 500; // pixels instead of units
-            const ry = (Math.cos(seed * 1.5) - 0.5) * 500;
-            activeBlock.leftInPixels = rx;
-            activeBlock.topInPixels = ry;
-          } else if (wl.pattern === 'center') {
-            activeBlock.leftInPixels = 0;
-            activeBlock.topInPixels = 0;
-          } else if (wl.pattern === 'random') {
-            // Jitter every frame
-            activeBlock.leftInPixels = (Math.random() - 0.5) * 500;
-            activeBlock.topInPixels = (Math.random() - 0.5) * 500;
+      const hasShading = config?.auxShading ?? false;
+
+      this.auxTextControls.forEach(c => {
+        if (c instanceof GUI.TextBlock) {
+          c.outlineColor = outlineColor;
+          c.outlineWidth = outlineWidth;
+          if (hasShading) {
+            c.shadowColor = "rgba(0,0,0,0.8)";
+            c.shadowBlur = 10;
+            c.shadowOffsetX = 5;
+            c.shadowOffsetY = 5;
           } else {
-            activeBlock.leftInPixels = 0;
-            activeBlock.topInPixels = 0;
+            c.shadowBlur = 0;
+            c.shadowOffsetX = 0;
+            c.shadowOffsetY = 0;
+          }
+        } else if (c instanceof GUI.StackPanel) {
+          c.children.forEach(child => {
+            if (child instanceof GUI.TextBlock) {
+              child.outlineColor = outlineColor;
+              child.outlineWidth = outlineWidth;
+              if (hasShading) {
+                child.shadowColor = "rgba(0,0,0,0.8)";
+                child.shadowBlur = 10;
+                child.shadowOffsetX = 5;
+                child.shadowOffsetY = 5;
+              } else {
+                child.shadowBlur = 0;
+                child.shadowOffsetX = 0;
+                child.shadowOffsetY = 0;
+              }
+            }
+          });
+        }
+
+        c.alpha = 1.0;
+        c.rotation = 0;
+        c.scaleX = 1.0;
+        c.scaleY = 1.0;
+
+        if (animType === 'fade') {
+          c.alpha = 0.5 + Math.sin(time * 3 * animSpeed) * 0.5 * animIntensity;
+        } else if (animType === 'warp') {
+          c.rotation = Math.sin(time * animSpeed) * 0.1 * animIntensity;
+          c.scaleX = 1.0 + Math.sin(time * 4 * animSpeed) * 0.1 * animIntensity;
+          c.scaleY = 1.0 + Math.cos(time * 4 * animSpeed) * 0.1 * animIntensity;
+        } else if (animType === 'prism') {
+          if (c instanceof GUI.TextBlock) {
+            c.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
+            c.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
+            c.shadowBlur = 15;
+            c.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
+          }
+        } else if (animType === 'glitch') {
+          if (Math.random() > 0.9 - (0.1 * animIntensity)) {
+            c.alpha = Math.random();
+            if (c instanceof GUI.TextBlock) c.color = Math.random() > 0.5 ? "cyan" : "magenta";
+          } else {
+            c.alpha = 1.0;
+            if (c instanceof GUI.TextBlock) c.color = config?.auxColor ?? "white";
           }
         }
-      }
+      });
     }
   }
 

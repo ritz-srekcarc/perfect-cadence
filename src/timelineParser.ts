@@ -7,6 +7,7 @@ export interface SegmentConfig {
   patternComplexity?: number;
   patternColor1?: string;
   patternColor2?: string;
+  patternFaceCamera?: boolean;
   camera: 'orbit' | 'fly' | 'static' | 'pan' | string;
   cameraSpeed?: number;
   cameraRadius?: number;
@@ -26,6 +27,8 @@ export interface SegmentConfig {
   textAnimType?: 'none' | 'zoom' | 'fade' | 'float' | 'warp' | 'prism' | 'glitch' | string;
   textAnimSpeed?: number;
   textAnimIntensity?: number;
+  textDisplayPattern?: 'center' | 'scatter' | 'random' | 'spiral' | 'march' | string;
+  textFaceCamera?: boolean;
   auxFont?: string;
   auxDistance?: number;
   auxSize?: number;
@@ -37,6 +40,7 @@ export interface SegmentConfig {
   auxAnimType?: 'none' | 'zoom' | 'fade' | 'float' | 'warp' | 'prism' | 'glitch' | string;
   auxAnimSpeed?: number;
   auxAnimIntensity?: number;
+  auxDisplayPattern?: 'center' | 'scatter' | 'random' | 'spiral' | 'march' | string;
   binaural: 'off' | 'focus' | 'relax' | 'sleep' | 'custom' | string;
   carrierFreq?: number;
   beatFreq?: number;
@@ -58,7 +62,7 @@ export interface MediaItem {
 
 export interface WordList {
   interval: number;
-  pattern: string;
+  count: number;
   words: string[];
   layer: 'main' | 'aux';
 }
@@ -94,6 +98,7 @@ cameraRadius: 30
 textSize: 24
 textDistance: 20
 textAnimType: fade
+textDisplayPattern: center
 binaural: off
 metronome: 0
 \`\`\`
@@ -107,7 +112,6 @@ metronome: 0
 export function parseSegmentContent(rawMarkdown: string) {
   let text = rawMarkdown;
   const media: MediaItem[] = [];
-  let wordList: WordList | undefined;
 
   // Parse blockquote (auxText)
   const blockquoteRegex = /^>\s*(.*)$/gm;
@@ -153,57 +157,69 @@ export function parseSegmentContent(rawMarkdown: string) {
     }
   }
 
-  // Parse word list
-  // !{interval,pattern}(list,of,words)
-  const wordListRegex = /!\{([\d.]+),\s*([^}]+)\}\(([^)]+)\)/g;
-  let wlMatch;
-  
-  // Check main text
-  while ((wlMatch = wordListRegex.exec(text)) !== null) {
-    const interval = parseFloat(wlMatch[1]);
-    const pattern = wlMatch[2].trim();
-    const wordsStr = wlMatch[3];
-    let words = wordsStr.split(',').map(w => w.trim()).filter(w => w.length > 0);
-    
-    if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
-      words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
-    }
-
-    wordList = {
-      interval,
-      pattern,
-      words,
-      layer: 'main'
-    };
-    text = text.replace(wlMatch[0], '');
-  }
-
-  // Check aux text
-  if (auxText) {
-    while ((wlMatch = wordListRegex.exec(auxText)) !== null) {
-      const interval = parseFloat(wlMatch[1]);
-      const pattern = wlMatch[2].trim();
-      const wordsStr = wlMatch[3];
-      let words = wordsStr.split(',').map(w => w.trim()).filter(w => w.length > 0);
-      
-      if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
-        words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
-      }
-
-      wordList = {
-        interval,
-        pattern,
-        words,
-        layer: 'aux'
-      };
-      auxText = auxText.replace(wlMatch[0], '');
-    }
-    auxText = auxText.trim();
-    if (auxText.length === 0) auxText = undefined;
-  }
-
-  return { text: text.trim(), auxText, media, wordList };
+  // We no longer strip wordlists here, they are parsed by markdownRenderer
+  return { text: text.trim(), auxText, media, wordList: undefined };
 }
+
+
+export const SYNTAX_DOCS = {
+  timeline: "Segments are separated by '---'. Each segment can start with a ```config ... ``` block.",
+  config: {
+    duration: "number (seconds)",
+    pattern: "string (spiral, tunnel, fractal, particles, rings, mandala, kaleidoscope, waves, pulse)",
+    patternType: "string (default, double, galaxy, sphere, cylinder, hypnotic, breathing, infinite, vortex, sacred_geometry)",
+    patternSpeed: "number (multiplier)",
+    patternScale: "number (multiplier)",
+    patternComplexity: "number (detail level)",
+    patternColor1: "string (hex color)",
+    patternColor2: "string (hex color)",
+    patternFaceCamera: "boolean",
+    camera: "string (orbit, fly, static, pan)",
+    cameraSpeed: "number (multiplier)",
+    cameraRadius: "number (distance from target)",
+    cameraHeight: "number (beta angle in radians)",
+    cameraTargetX: "number",
+    cameraTargetY: "number",
+    cameraTargetZ: "number",
+    cameraFov: "number (field of view in degrees)",
+    textFont: "string (sans-serif, serif, monospace, cursive, fantasy)",
+    textDistance: "number",
+    textSize: "number",
+    textOutlineType: "string (none, rainbow, solid)",
+    textOutlineColor: "string (hex color)",
+    textColor: "string (hex color)",
+    textShading: "boolean",
+    textBackdrop: "boolean",
+    textAnimType: "string (none, zoom, fade, float, warp, prism, glitch)",
+    textAnimSpeed: "number",
+    textAnimIntensity: "number",
+    textDisplayPattern: "string (center, scatter, random, spiral, march)",
+    textFaceCamera: "boolean",
+    auxFont: "string",
+    auxDistance: "number",
+    auxSize: "number",
+    auxOutlineType: "string",
+    auxOutlineColor: "string",
+    auxColor: "string",
+    auxShading: "boolean",
+    auxBackdrop: "boolean",
+    auxAnimType: "string",
+    auxAnimSpeed: "number",
+    auxAnimIntensity: "number",
+    auxDisplayPattern: "string (center, scatter, random, spiral, march)",
+    binaural: "string (off, focus, relax, sleep, custom)",
+    carrierFreq: "number (Hz)",
+    beatFreq: "number (Hz)",
+    ampModulation: "number (Hz)",
+    metronome: "number (BPM, 0 for off)",
+    audioUrl: "string (URL)",
+    speech_synth: "boolean",
+    speech_voice: "string",
+    speech_speed: "number"
+  },
+  media: "![opacity,volume](url) - opacity 0-100, volume 0-100 (optional)",
+  wordList: "!{interval,count}(list,of,words) - interval in seconds, count of words to display at once"
+};
 
 export function parseTimeline(markdown: string): TimelineSegment[] {
   const segments: TimelineSegment[] = [];
@@ -281,7 +297,7 @@ export function serializeTimeline(segments: TimelineSegment[]): string {
     let configStr = '';
     const c = seg.config as any;
     
-    const keys = ['duration', 'pattern', 'patternType', 'patternSpeed', 'patternScale', 'patternComplexity', 'patternColor1', 'patternColor2', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
+    const keys = ['duration', 'pattern', 'patternType', 'patternSpeed', 'patternScale', 'patternComplexity', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
     
     for (const key of keys) {
       if (c[key] !== undefined && (index === 0 || c[key] !== (lastConfig as any)[key])) {

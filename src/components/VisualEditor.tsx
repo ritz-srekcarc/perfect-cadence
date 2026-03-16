@@ -13,6 +13,7 @@ interface VisualEditorProps {
 }
 
 interface SegmentEditorProps {
+  key?: string;
   seg: TimelineSegment;
   index: number;
   totalSegments: number;
@@ -115,6 +116,13 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                   <option value="infinite">Infinite</option>
                   <option value="vortex">Vortex</option>
                   <option value="sacred_geometry">Sacred Geometry</option>
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs text-zinc-500">Pattern Face Camera</label>
+                <select value={seg.config.patternFaceCamera === undefined ? 'true' : (seg.config.patternFaceCamera ? 'true' : 'false')} onChange={(e) => updateConfig(index, 'patternFaceCamera', e.target.value === 'true')} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                  <option value="false">Off</option>
+                  <option value="true">On</option>
                 </select>
               </div>
               <div className="flex flex-col gap-1">
@@ -278,6 +286,33 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                     <div className="flex flex-col gap-1">
                       <label className="text-xs text-zinc-500">Backdrop</label>
                       <select value={seg.config.textBackdrop ? 'true' : 'false'} onChange={(e) => updateConfig(index, 'textBackdrop', e.target.value === 'true')} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                        <option value="false">Off</option>
+                        <option value="true">On</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-zinc-500">Display Pattern</label>
+                      <select value={seg.config.textDisplayPattern || 'center'} onChange={(e) => updateConfig(index, 'textDisplayPattern', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                        <option value="center">Center</option>
+                        <option value="scatter">Scatter</option>
+                        <option value="random">Random</option>
+                        <option value="spiral">Spiral</option>
+                        <option value="march">March</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-zinc-500">Aux Display Pattern</label>
+                      <select value={seg.config.auxDisplayPattern || 'center'} onChange={(e) => updateConfig(index, 'auxDisplayPattern', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                        <option value="center">Center</option>
+                        <option value="scatter">Scatter</option>
+                        <option value="random">Random</option>
+                        <option value="spiral">Spiral</option>
+                        <option value="march">March</option>
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-xs text-zinc-500">Face Camera</label>
+                      <select value={seg.config.textFaceCamera === undefined ? 'true' : (seg.config.textFaceCamera ? 'true' : 'false')} onChange={(e) => updateConfig(index, 'textFaceCamera', e.target.value === 'true')} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
                         <option value="false">Off</option>
                         <option value="true">On</option>
                       </select>

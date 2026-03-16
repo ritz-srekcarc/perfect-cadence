@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { SYNTAX_DOCS } from '../src/timelineParser';
 
 const DIST_MCP = 'dist/mcp';
 
@@ -47,21 +48,7 @@ function generate() {
 
   // Resource: perfect-cadence://syntax
   const syntaxResource = {
-    syntax: {
-      timeline: "Segments are separated by '---'. Each segment can start with a ```config ... ``` block.",
-      config: {
-        duration: "number (seconds)",
-        pattern: "string (spiral, tunnel, fractal, particles, rings, mandala, kaleidoscope, waves, pulse)",
-        camera: "string (orbit, fly, static, pan)",
-        speech: {
-          speech_synth: "boolean",
-          speech_voice: "string",
-          speech_speed: "number"
-        }
-      },
-      media: "![opacity,volume](url) - opacity 0-100, volume 0-100 (optional)",
-      wordList: "!{interval,pattern}(list,of,words) - interval in seconds, pattern name"
-    }
+    syntax: SYNTAX_DOCS
   };
   fs.writeFileSync(path.join(DIST_MCP, 'resources', 'perfect-cadence-syntax.json'), JSON.stringify(syntaxResource, null, 2));
 }

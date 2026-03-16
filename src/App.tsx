@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Play, Square, Edit3, Eye, Settings, Share2, HelpCircle, X, Ear, Loader2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { KokoroTTS } from 'kokoro-js';
+import { env } from '@huggingface/transformers';
 import Editor from 'react-simple-code-editor';
 import Prism from 'prismjs';
 import 'prismjs/components/prism-markdown';
@@ -63,6 +64,7 @@ export default function App() {
   const [isDecrypting, setIsDecrypting] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(400);
   const [isDragging, setIsDragging] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
   useEffect(() => {
@@ -130,6 +132,14 @@ export default function App() {
   useEffect(() => {
     const initKokoro = async () => {
       try {
+        // Configure transformers to use browser cache
+        env.useBrowserCache = true;
+        
+        // NOTE: If you encounter "unauthorized access to huggingface" errors, 
+        // you may need to host the model files locally.
+        // 1. Download model files from https://huggingface.co/hexgrad/kokoro-onnx
+        // 2. Place them in public/models/kokoro/
+        // 3. Change the path below to './models/kokoro/'
         const k = await KokoroTTS.from_pretrained('hexgrad/kokoro-onnx', { dtype: 'fp32' });
         setKokoro(k);
       } catch (e) {
@@ -231,7 +241,7 @@ export default function App() {
         href={`?m=${encodedDemos.COSMOS}`}
         className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === DEMOS.COSMOS ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
       >
-        trans
+        transcribe
       </a>
       <a 
         href={`?m=${encodedDemos.GEOMETRY}`}
@@ -334,7 +344,11 @@ export default function App() {
 
   useEffect(() => {
     if (canvasRef.current && !sceneManagerRef.current) {
-      sceneManagerRef.current = new SceneManager(canvasRef.current);
+      const sm = new SceneManager(canvasRef.current);
+      sceneManagerRef.current = sm;
+      sm.getScene().executeWhenReady(() => {
+        setIsInitializing(false);
+      });
     }
     
     if (sceneManagerRef.current) {
@@ -401,7 +415,7 @@ export default function App() {
     if (!isPlaying && sceneManagerRef.current && segments.length > 0) {
       const currentSegment = segments[0];
       sceneManagerRef.current.applyConfig(currentSegment.config);
-      sceneManagerRef.current.updateText(currentSegment.text, currentSegment.auxText, currentSegment.wordList);
+      sceneManagerRef.current.updateText(currentSegment.text, currentSegment.auxText);
       sceneManagerRef.current.updateMedia(currentSegment.media);
       sceneManagerRef.current.updateXRProgress(0, currentSegment.config.duration);
     }
@@ -434,7 +448,7 @@ export default function App() {
       // Apply scene config
       if (sceneManagerRef.current) {
         sceneManagerRef.current.applyConfig(currentSegment.config);
-        sceneManagerRef.current.updateText(currentSegment.text, currentSegment.auxText, currentSegment.wordList);
+        sceneManagerRef.current.updateText(currentSegment.text, currentSegment.auxText);
         sceneManagerRef.current.updateMedia(currentSegment.media);
         sceneManagerRef.current.updateXRProgress(timeElapsed, currentSegment.config.duration);
       }
@@ -789,6 +803,22 @@ export default function App() {
 
       {showWarning && <SeizureWarning onClose={handleCloseWarning} />}
 
+      {/* Loading Screen */}
+      {isInitializing && !encryptedPayload && (
+        <div className="fixed inset-0 z-[100] bg-zinc-950 flex flex-col items-center justify-center gap-8 animate-in fade-in duration-500">
+          <div className="relative">
+            <SpiralLogo size={160} className="text-emerald-500/40" />
+            <div className="absolute inset-0 flex items-center justify-center">
+              <SpiralLogo size={80} className="text-emerald-400 animate-[spin_3s_linear_infinite]" />
+            </div>
+          </div>
+          <div className="flex flex-col items-center gap-2">
+            <h1 className="text-2xl font-bold text-zinc-100 tracking-tighter uppercase">Initializing Engine</h1>
+            <p className="text-zinc-500 text-sm font-medium animate-pulse">Preparing visual environment...</p>
+          </div>
+        </div>
+      )}
+
       {/* Decryption UI Overlay */}
       {encryptedPayload && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-zinc-950 p-4">
@@ -934,6 +964,7 @@ metronome: 60
               <li><strong className="text-zinc-200">patternScale:</strong> Pattern size multiplier (number)</li>
               <li><strong className="text-zinc-200">patternComplexity:</strong> Detail level (number)</li>
               <li><strong className="text-zinc-200">patternColor1/2:</strong> Hex colors (string, e.g., #ff0000)</li>
+              <li><strong className="text-zinc-200">patternFaceCamera:</strong> <code>true</code>, <code>false</code> (default true)</li>
               <li><strong className="text-zinc-200">camera:</strong> <code>static</code>, <code>orbit</code>, <code>fly</code>, <code>pan</code></li>
               <li><strong className="text-zinc-200">cameraSpeed:</strong> Multiplier (number)</li>
               <li><strong className="text-zinc-200">cameraRadius:</strong> Distance from target (number)</li>
@@ -949,6 +980,9 @@ metronome: 60
               <li><strong className="text-zinc-200">textAnimType:</strong> <code>none</code>, <code>zoom</code>, <code>fade</code>, <code>float</code>, <code>warp</code>, <code>prism</code>, <code>glitch</code></li>
               <li><strong className="text-zinc-200">textAnimSpeed:</strong> Animation speed multiplier (number)</li>
               <li><strong className="text-zinc-200">textAnimIntensity:</strong> Animation strength multiplier (number)</li>
+              <li><strong className="text-zinc-200">textDisplayPattern:</strong> <code>center</code>, <code>scatter</code>, <code>random</code>, <code>spiral</code>, <code>march</code></li>
+              <li><strong className="text-zinc-200">textFaceCamera:</strong> <code>true</code>, <code>false</code> (default true)</li>
+              <li><strong className="text-zinc-200">auxDisplayPattern:</strong> <code>center</code>, <code>scatter</code>, <code>random</code>, <code>spiral</code>, <code>march</code></li>
               <li><strong className="text-zinc-200">binaural:</strong> <code>focus</code>, <code>relax</code>, <code>sleep</code>, <code>custom</code>, <code>off</code></li>
               <li><strong className="text-zinc-200">metronome:</strong> BPM (number, 0 for off)</li>
               <li><strong className="text-zinc-200">carrierFreq:</strong> Hz (number, for custom binaural)</li>
@@ -958,11 +992,11 @@ metronome: 60
             </ul>
 
             <h3 className="text-zinc-100 mt-6">Wordlists</h3>
-            <p className="text-zinc-400">Display a sequence of words: <code>!{`{interval,pattern}(word1,word2)`}</code></p>
+            <p className="text-zinc-400">Display a sequence of words: <code>!{`{interval,count}(word1,word2)`}</code></p>
             <ul className="text-zinc-400 space-y-2">
-              <li><strong className="text-zinc-200">interval:</strong> Seconds per word</li>
-              <li><strong className="text-zinc-200">pattern:</strong> <code>center</code>, <code>scatter</code>, <code>random</code></li>
-              <li><strong className="text-zinc-200">Pre-built lists:</strong> Use a single word to load a list: <code>relax</code>, <code>focus</code>, <code>sleep</code>, <code>confidence</code>, <code>energy</code>. Example: <code>!{`{3,scatter}(relax)`}</code></li>
+              <li><strong className="text-zinc-200">interval:</strong> Seconds per word update</li>
+              <li><strong className="text-zinc-200">count:</strong> Number of words to display at once</li>
+              <li><strong className="text-zinc-200">Pre-built lists:</strong> Use a single word to load a list: <code>relax</code>, <code>focus</code>, <code>sleep</code>, <code>confidence</code>, <code>energy</code>. Example: <code>!{`{3,4}(relax)`}</code></li>
             </ul>
 
             <h3 className="text-zinc-100 mt-6">Images & Videos</h3>
