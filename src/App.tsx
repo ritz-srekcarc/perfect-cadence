@@ -298,7 +298,21 @@ export default function App() {
     const params = new URLSearchParams(window.location.search);
     const encoded = params.get('m');
     const encrypted = params.get('e');
-    let initialMarkdown = DEFAULT_MARKDOWN;
+    
+    const hasSeenWarning = localStorage.getItem('hasSeenSeizureWarning');
+    
+    const BASIC_GREETING_MARKDOWN = `\`\`\`config
+duration: 10
+pattern: particles
+patternType: galaxy
+camera: orbit
+\`\`\`
+
+# Welcome Back
+> Ready to create another immersive experience?
+`;
+
+    let initialMarkdown = hasSeenWarning ? BASIC_GREETING_MARKDOWN : DEFAULT_MARKDOWN;
     
     if (encrypted) {
       setEncryptedPayload(encrypted);
@@ -780,8 +794,22 @@ export default function App() {
             onClick={() => {
               const parsedSegments = parseTimeline(markdown);
               const binaurals = ['focus', 'relax', 'sleep'];
+              const audioUrls = [
+                'https://actions.google.com/sounds/v1/water/waves_crashing_on_rock_beach.ogg',
+                'https://actions.google.com/sounds/v1/weather/rain_on_roof.ogg',
+                'https://actions.google.com/sounds/v1/ambiences/forest_morning.ogg'
+              ];
               parsedSegments.forEach(seg => {
                 seg.config.binaural = binaurals[Math.floor(Math.random() * binaurals.length)];
+                seg.config.metronome = Math.floor(60 + Math.random() * 120);
+                seg.config.audioUrl = audioUrls[Math.floor(Math.random() * audioUrls.length)];
+                seg.config.speech_synth = true;
+                
+                // Increase volumes to random nonzero values
+                seg.rawMarkdown = seg.rawMarkdown.replace(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g, (match, opacity, volume, url) => {
+                  const newVolume = Math.floor(10 + Math.random() * 90);
+                  return `![${opacity},${newVolume}](${url})`;
+                });
               });
               const newMarkdown = serializeTimeline(parsedSegments);
               setMarkdown(newMarkdown);

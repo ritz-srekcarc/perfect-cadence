@@ -39,26 +39,23 @@ function generateMarkdown() {
     const displayPattern = displayPatterns[Math.floor(Math.random() * displayPatterns.length)];
     
     const r = Math.random();
-    if (r < 0.15) {
+    if (r < 0.2) {
       md += `## ${pattern.charAt(0).toUpperCase() + pattern.slice(1)} State\n`;
       md += `> Deep immersion into the ${patternType} ${pattern} field.\n`;
-    } else if (r < 0.3) {
+    } else if (r < 0.5) {
       const src = imageSources[Math.floor(Math.random() * imageSources.length)];
       md += `![${Math.floor(20 + Math.random() * 60)}](${src}${segmentCount})\n`;
       md += `Visualizing neural pathways.\n`;
-    } else if (r < 0.45) {
+    } else if (r < 0.8) {
       const src = videoSources[Math.floor(Math.random() * videoSources.length)];
       md += `![${Math.floor(30 + Math.random() * 50)},0](${src})\n`;
       md += `Synchronizing with the kinetic stream.\n`;
-    } else if (r < 0.6) {
-      md += `!{${(0.5 + Math.random()).toFixed(1)},${Math.floor(1 + Math.random() * 3)}}(relax)\n`;
-      md += `Harmonizing frequencies.\n`;
     } else {
-      md += `## Phase ${segmentCount + 1}\n`;
+      md += `## ${pattern.charAt(0).toUpperCase() + pattern.slice(1)} Integration\n`;
       md += `Experience the ${patternType} ${pattern} pattern.\n`;
     }
 
-    md += `\n\`\`\`config\nduration: ${duration.toFixed(1)}\npattern: ${pattern}\npatternType: ${patternType}\ncamera: ${camera}\npatternSpeed: ${(0.2 + Math.random() * 1.5).toFixed(2)}\ntextAnimType: ${textAnim}\ntextDisplayPattern: ${displayPattern}\ntextSize: ${Math.floor(20 + Math.random() * 100)}\ntextDistance: ${Math.floor(15 + Math.random() * 20)}\nbinaural: ${binaural}\nmetronome: ${Math.random() > 0.7 ? Math.floor(60 + Math.random() * 120) : 0}\n\`\`\`\n\n`;
+    md += `\n\`\`\`config\nduration: ${duration.toFixed(1)}\npattern: ${pattern}\npatternType: ${patternType}\ncamera: ${camera}\npatternSpeed: ${(0.2 + Math.random() * 1.5).toFixed(2)}\ntextAnimType: ${textAnim}\ntextDisplayPattern: ${displayPattern}\ntextSize: ${Math.floor(20 + Math.random() * 100)}\ntextDistance: ${Math.floor(15 + Math.random() * 20)}\nbinaural: off\nmetronome: 0\n\`\`\`\n\n`;
     
     totalDuration += duration;
     segmentCount++;

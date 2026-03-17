@@ -96,28 +96,27 @@ export interface TimelineSegment {
   rawMarkdown: string;
 }
 
-export const DEFAULT_MARKDOWN = `\`\`\`config
+export const DEFAULT_MARKDOWN = `# Welcome to Perfect Cadence
+Type your text here. Each line will be spoken and displayed.
+
+Use markdown to format your timeline.
+Separate segments with three dashes (---).
+
+\`\`\`config
 duration: 10
-pattern: particles
-patternType: default
-patternComplexity: 1.0
-patternScale:2
-patternColor1: #ffffff
+pattern: spiral
 camera: orbit
-cameraSpeed: 0.2
-cameraRadius: 30
-textSize: 24
-textDistance: 20
-textAnimType: fade
-textDisplayPattern: center
-binaural: off
-metronome: 0
 \`\`\`
 
-# Perfect Cadence
-*Ready* **to** ***begin.***
-> *Load* a **preset** or ***start typing.***
+---
 
+## Next Segment
+You can change the visuals per segment.
+
+\`\`\`config
+pattern: particles
+camera: fly
+\`\`\`
 `;
 
 /**
