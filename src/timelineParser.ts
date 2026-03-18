@@ -96,6 +96,99 @@ export interface TimelineSegment {
   rawMarkdown: string;
 }
 
+const KEY_MAP: Record<string, string> = {
+  duration: 'd',
+  pattern: 'p',
+  patternType: 'pt',
+  patternSpeed: 'ps',
+  patternScale: 'psc',
+  patternComplexity: 'pc',
+  patternColor1: 'c1',
+  patternColor2: 'c2',
+  patternFaceCamera: 'pfc',
+  camera: 'ca',
+  cameraSpeed: 'cs',
+  cameraRadius: 'cr',
+  cameraHeight: 'ch',
+  cameraTargetX: 'tx',
+  cameraTargetY: 'ty',
+  cameraTargetZ: 'tz',
+  cameraFov: 'fov',
+  textFont: 'tf',
+  textDistance: 'td',
+  textSize: 'ts',
+  textOutlineType: 'tot',
+  textOutlineColor: 'toc',
+  textColor: 'tc',
+  textShading: 'tsh',
+  textBackdrop: 'tbd',
+  textAnimType: 'tat',
+  textAnimSpeed: 'tas',
+  textAnimIntensity: 'tai',
+  textDisplayPattern: 'tdp',
+  textFaceCamera: 'tfc',
+  auxFont: 'af',
+  auxDistance: 'ad',
+  auxSize: 'as',
+  auxOutlineType: 'aot',
+  auxOutlineColor: 'aoc',
+  auxColor: 'ac',
+  auxShading: 'ash',
+  auxBackdrop: 'abd',
+  auxAnimType: 'aat',
+  auxAnimSpeed: 'aas',
+  auxAnimIntensity: 'aai',
+  auxDisplayPattern: 'adp',
+  binaural: 'bin',
+  metronome: 'm',
+  carrierFreq: 'cf',
+  beatFreq: 'bf',
+  ampModulation: 'am',
+  audioUrl: 'au',
+  speech_synth: 'ss',
+  speech_voice: 'sv',
+  speech_speed: 'ssp'
+};
+
+const VALUE_MAP: Record<string, string> = {
+  spiral: 'sp',
+  tunnel: 'tu',
+  fractal: 'fr',
+  particles: 'pa',
+  rings: 'ri',
+  mandala: 'man',
+  kaleidoscope: 'ka',
+  waves: 'wa',
+  pulse: 'pu',
+  orbit: 'or',
+  fly: 'fl',
+  static: 'st',
+  pan: 'pn',
+  'sans-serif': 'ss',
+  serif: 'se',
+  monospace: 'mo',
+  cursive: 'cu',
+  fantasy: 'fa',
+  none: 'no',
+  rainbow: 'rb',
+  solid: 'so',
+  zoom: 'zo',
+  fade: 'fa',
+  float: 'fl',
+  warp: 'wa',
+  prism: 'pr',
+  glitch: 'gl',
+  center: 'ce',
+  scatter: 'sc',
+  random: 'ra',
+  march: 'mar',
+  off: 'of',
+  focus: 'fo',
+  relax: 're',
+  sleep: 'sl',
+  custom: 'cu'
+};
+
 export const DEFAULT_MARKDOWN = `# Welcome to Perfect Cadence
 Type your text here. Each line will be spoken and displayed.
 
@@ -335,4 +428,86 @@ export function serializeTimeline(segments: TimelineSegment[]): string {
     md += seg.rawMarkdown.trim() + '\n';
     return md;
   }).join('\n');
+}
+
+/**
+ * Minifies the markdown by removing extra whitespace and redundant configuration.
+ * Uses aggressive substitution for keys and common values.
+ */
+export function minifyMarkdown(markdown: string): string {
+  const segments = parseTimeline(markdown);
+  let lastConfig: Partial<SegmentConfig> = {};
+  
+  return segments.map((seg, index) => {
+    let md = '';
+    if (index > 0) {
+      md += '§\n'; // separator
+    }
+    
+    let configStr = '';
+    const c = seg.config as any;
+    const keys = ['duration', 'pattern', 'patternType', 'patternSpeed', 'patternScale', 'patternComplexity', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
+    
+    for (const key of keys) {
+      if (c[key] !== undefined && (index === 0 || c[key] !== (lastConfig as any)[key])) {
+        const minKey = KEY_MAP[key] || key;
+        const minVal = VALUE_MAP[c[key]] || c[key];
+        configStr += `${minKey}:${minVal}\n`;
+      }
+    }
+    
+    if (configStr.length > 0) {
+      md += '«\n' + configStr + '»\n';
+    }
+    
+    lastConfig = { ...c };
+    
+    const segmentMd = seg.rawMarkdown
+      .split('\n')
+      .map(line => line.trim())
+      .filter(line => line.length > 0)
+      .join('\n');
+      
+    md += segmentMd;
+    return md;
+  }).join('\n');
+}
+
+/**
+ * Reverses the aggressive minification to restore the original markdown format.
+ */
+export function unminifyMarkdown(minified: string): string {
+  if (!minified) return '';
+  
+  // Reverse the mappings
+  const REVERSE_KEY_MAP = Object.fromEntries(Object.entries(KEY_MAP).map(([k, v]) => [v, k]));
+  const REVERSE_VALUE_MAP = Object.fromEntries(Object.entries(VALUE_MAP).map(([k, v]) => [v, k]));
+
+  // Split by segments first to avoid global replacement issues
+  const segments = minified.split(/^§$/gm);
+  
+  return segments.map(seg => {
+    let segment = seg.trim();
+    
+    // Handle config blocks
+    const configMatch = segment.match(/^«\s*[\r\n]+([\s\S]*?)[\r\n]+»/);
+    if (configMatch) {
+      const configLines = configMatch[1].split(/[\r\n]+/);
+      const expandedLines = configLines.map(line => {
+        const [key, ...valueParts] = line.split(':');
+        if (key && valueParts.length > 0) {
+          const val = valueParts.join(':').trim();
+          const expandedKey = REVERSE_KEY_MAP[key.trim()] || key.trim();
+          const expandedVal = REVERSE_VALUE_MAP[val] || val;
+          return `${expandedKey}: ${expandedVal}`;
+        }
+        return line;
+      });
+      
+      const expandedConfig = '```config\n' + expandedLines.join('\n') + '\n```';
+      segment = segment.replace(configMatch[0], expandedConfig);
+    }
+    
+    return segment;
+  }).join('\n\n---\n\n');
 }

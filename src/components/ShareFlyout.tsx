@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Share2, Copy, Check, Link as LinkIcon, QrCode, Loader2, ExternalLink, Lock, Unlock } from 'lucide-react';
 import CryptoJS from 'crypto-js';
 import LZString from 'lz-string';
+import { minifyMarkdown } from '../timelineParser';
 
 interface ShareFlyoutProps {
   isOpen: boolean;
@@ -28,11 +29,12 @@ export function ShareFlyout({ isOpen, onClose, markdown }: ShareFlyoutProps) {
   const generateUrl = () => {
     try {
       const url = new URL(window.location.origin + window.location.pathname);
+      const minifiedMarkdown = minifyMarkdown(markdown);
       if (isEncrypted && password) {
-        const encrypted = CryptoJS.AES.encrypt(markdown, password).toString();
+        const encrypted = CryptoJS.AES.encrypt(minifiedMarkdown, password).toString();
         url.searchParams.set('e', encrypted);
       } else {
-        const compressed = LZString.compressToEncodedURIComponent(markdown);
+        const compressed = LZString.compressToEncodedURIComponent(minifiedMarkdown);
         url.searchParams.set('m', compressed);
       }
       return url.toString();

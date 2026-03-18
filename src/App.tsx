@@ -8,7 +8,7 @@ import 'prismjs/components/prism-markdown';
 import 'prismjs/themes/prism-tomorrow.css';
 import { SceneManager } from './SceneManager';
 import { audioEngine } from './audioEngine';
-import { DEFAULT_MARKDOWN, parseTimeline, serializeTimeline, TimelineSegment } from './timelineParser';
+import { DEFAULT_MARKDOWN, parseTimeline, serializeTimeline, unminifyMarkdown, TimelineSegment } from './timelineParser';
 import { DEMO_MARKDOWN } from './demoPreset';
 import { VisualEditor } from './components/VisualEditor';
 import { AudioAnalysisFlyout } from './components/AudioAnalysisFlyout';
@@ -230,16 +230,8 @@ export default function App() {
   const decodeMarkdown = (encoded: string) => {
     try {
       const decoded = LZString.decompressFromEncodedURIComponent(encoded);
-      if (decoded !== null) return decoded;
-      
-      // Fallback for legacy base64
-      try {
-        return decodeURIComponent(atob(encoded).split('').map(function(c) {
-            return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
-        }).join(''));
-      } catch (e) {
-        return null;
-      }
+      if (decoded === null) return null;
+      return unminifyMarkdown(decoded);
     } catch (e) {
       console.error("Failed to decode markdown", e);
       return null;
@@ -361,11 +353,13 @@ camera: orbit
       try {
         if (!encryptedPayload) return;
         const bytes = CryptoJS.AES.decrypt(encryptedPayload, decryptionPassword);
-        const decrypted = bytes.toString(CryptoJS.enc.Utf8);
+        let decrypted = bytes.toString(CryptoJS.enc.Utf8);
         
         if (!decrypted) {
           throw new Error('Invalid password');
         }
+
+        decrypted = unminifyMarkdown(decrypted);
 
         setMarkdown(decrypted);
         setEncryptedPayload(null);
