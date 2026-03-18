@@ -16,3 +16,13 @@
 .animate-progress-indefinite {
   animation: progress-indefinite 1.5s infinite linear;
 }
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}

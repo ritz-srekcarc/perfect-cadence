@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TimelineSegment, SegmentConfig, parseSegmentContent, MediaItem } from '../timelineParser';
-import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2, Info, Bold, Italic, Heading1, Heading2, List, ListOrdered, Ear, Timer, Image, Video, Volume2, Paintbrush, Film, X } from 'lucide-react';
+import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2, Info, Bold, Italic, Heading1, Heading2, List, ListOrdered, Ear, Timer, Image, Tv, Volume2, Paintbrush, Film, X, Speech, Orbit, Activity, Camera } from 'lucide-react';
 import { transcribeAudio } from '../services/audioAnalysisService';
 import Editor from 'react-simple-code-editor';
 import ReactQuill from 'react-quill-new';
@@ -143,27 +143,27 @@ const RichTextEditor = ({ markdown, onChange, onInsertImage, onInsertVideo, onIn
 
   return (
     <div className="rich-text-editor bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden">
-      <div id={toolbarId} className="ql-toolbar ql-snow flex items-center gap-1">
-        <span className="ql-formats flex items-center gap-1">
-          <button className="ql-header" value="1"></button>
-          <button className="ql-bold"></button>
-          <button className="ql-italic"></button>
-          <button className="ql-blockquote"></button>
-          <button onClick={handlePaintbrushClick} className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center" title="Style Settings">
+      <div id={toolbarId} className="ql-toolbar ql-snow flex items-center gap-1 flex-nowrap overflow-x-auto scrollbar-hide">
+        <span className="ql-formats flex items-center gap-1 shrink-0">
+          <button className="ql-header shrink-0" value="1"></button>
+          <button className="ql-bold shrink-0"></button>
+          <button className="ql-italic shrink-0"></button>
+          <button className="ql-blockquote shrink-0"></button>
+          <button onClick={handlePaintbrushClick} data-bubble-toggle="true" className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Style Settings">
             <Paintbrush size={16} />
           </button>
-          <button onClick={handleFilmClick} className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center" title="Animation Settings">
+          <button onClick={handleFilmClick} data-bubble-toggle="true" className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Animation Settings">
             <Film size={16} />
           </button>
         </span>
-        <span className="ql-formats !mr-0 flex items-center gap-1 border-l border-zinc-800 pl-2 ml-1">
-          <button onClick={onInsertImage} className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center" title="Insert Image">
+        <span className="ql-formats !mr-0 flex items-center gap-1 border-l border-zinc-800 pl-2 ml-1 shrink-0">
+          <button onClick={onInsertImage} className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Insert Image">
             <Image size={16} />
           </button>
-          <button onClick={onInsertVideo} className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center" title="Insert Video">
-            <Video size={16} />
+          <button onClick={onInsertVideo} className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Insert Video">
+            <Tv size={16} />
           </button>
-          <button onClick={onInsertWordlist} className="!w-auto !h-auto p-1 text-emerald-400 hover:text-emerald-300 hover:bg-zinc-800 rounded flex items-center justify-center" title="Insert Wordlist">
+          <button onClick={onInsertWordlist} className="!w-auto !h-auto p-1 text-emerald-400 hover:text-emerald-300 hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Insert Wordlist">
             <Sparkles size={16} />
           </button>
         </span>
@@ -207,13 +207,31 @@ const RichTextEditor = ({ markdown, onChange, onInsertImage, onInsertVideo, onIn
  * A sub-component for editing a single segment within the VisualEditor.
  */
 function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown, moveSegment, removeSegment }: SegmentEditorProps) {
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const [isAdvancedAnimOpen, setIsAdvancedAnimOpen] = useState(false);
-  const [isAdvancedCamOpen, setIsAdvancedCamOpen] = useState(false);
-  const [activeBubble, setActiveBubble] = useState<{ type: 'style' | 'animation', isAux: boolean } | null>(null);
-  const [isAdvancedAudioOpen, setIsAdvancedAudioOpen] = useState(false);
-  const [isAdvancedSpeechOpen, setIsAdvancedSpeechOpen] = useState(false);
+  const [activeBubble, setActiveBubble] = useState<{ type: 'style' | 'animation' | 'speech' | 'binaural' | 'audio' | 'metronome' | 'pattern' | 'camera' | 'anim_config', isAux?: boolean } | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!activeBubble) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (bubbleRef.current && !bubbleRef.current.contains(event.target as Node)) {
+        // Check if the click was on a button that might be toggling a bubble
+        // to avoid double-toggling issues.
+        const target = event.target as HTMLElement;
+        const isToggleButton = target.closest('button')?.hasAttribute('data-bubble-toggle');
+        
+        if (!isToggleButton) {
+          setActiveBubble(null);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [activeBubble]);
 
   const parsed = parseSegmentContent(seg.rawMarkdown);
   const primaryText = parsed.text;
@@ -295,29 +313,40 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
           <span className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Segment {index + 1}</span>
           <div className="flex items-center gap-1">
             <button 
-              onClick={() => scrollToSection(`advanced-audio-${index}`, [() => setIsConfigOpen(true), () => setIsAdvancedAudioOpen(true)])}
-              className="text-[10px] flex items-center gap-1 text-emerald-400 hover:text-emerald-300 bg-emerald-500/10 px-2 py-1 rounded"
+              onClick={() => setActiveBubble(activeBubble?.type === 'audio' ? null : { type: 'audio' })}
+              data-bubble-toggle="true"
+              className={`p-1 rounded transition-colors ${activeBubble?.type === 'audio' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
+              title="Audio Options"
             >
-              <Volume2 size={10} />
-              Add Audio
+              <Volume2 size={12} />
             </button>
             <button 
-              onClick={() => scrollToSection(`binaural-${index}`, [() => setIsConfigOpen(true)])}
-              className="p-1 text-zinc-400 hover:text-emerald-400 bg-zinc-900 rounded"
+              onClick={() => setActiveBubble(activeBubble?.type === 'binaural' ? null : { type: 'binaural' })}
+              data-bubble-toggle="true"
+              className={`p-1 rounded transition-colors ${activeBubble?.type === 'binaural' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
               title="Binaural Options"
             >
               <Ear size={12} />
             </button>
             <button 
-              onClick={() => scrollToSection(`metronome-${index}`, [() => setIsConfigOpen(true), () => setIsAdvancedAudioOpen(true)])}
-              className="p-1 text-zinc-400 hover:text-emerald-400 bg-zinc-900 rounded"
+              onClick={() => setActiveBubble(activeBubble?.type === 'metronome' ? null : { type: 'metronome' })}
+              data-bubble-toggle="true"
+              className={`p-1 rounded transition-colors ${activeBubble?.type === 'metronome' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
               title="Metronome Options"
             >
               <Timer size={12} />
             </button>
+            <button 
+              onClick={() => setActiveBubble(activeBubble?.type === 'speech' ? null : { type: 'speech' })}
+              data-bubble-toggle="true"
+              className={`p-1 rounded transition-colors ${activeBubble?.type === 'speech' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
+              title="Speech Synthesis"
+            >
+              <Speech size={12} />
+            </button>
           </div>
         </div>
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="flex gap-1 transition-opacity">
           <button onClick={() => moveSegment(index, -1)} disabled={index === 0} className="p-1 text-zinc-400 hover:text-white disabled:opacity-30"><ArrowUp size={16}/></button>
           <button onClick={() => moveSegment(index, 1)} disabled={index === totalSegments - 1} className="p-1 text-zinc-400 hover:text-white disabled:opacity-30"><ArrowDown size={16}/></button>
           <button onClick={() => removeSegment(index)} className="p-1 text-red-400 hover:text-red-300 ml-2"><Trash2 size={16}/></button>
@@ -344,11 +373,31 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
         />
 
         {activeBubble && (
-          <div className="absolute top-12 right-0 z-50 w-80 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200">
+          <div 
+            ref={bubbleRef}
+            className="absolute top-12 right-0 z-50 w-80 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200"
+          >
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
-                {activeBubble.type === 'style' ? <Paintbrush size={14} /> : <Film size={14} />}
-                {activeBubble.isAux ? 'Aux' : 'Text'} {activeBubble.type === 'style' ? 'Style' : 'Animation'}
+                {activeBubble.type === 'style' ? <Paintbrush size={14} /> : 
+                 activeBubble.type === 'animation' ? <Film size={14} /> :
+                 activeBubble.type === 'speech' ? <Speech size={14} /> :
+                 activeBubble.type === 'binaural' ? <Ear size={14} /> :
+                 activeBubble.type === 'audio' ? <Volume2 size={14} /> :
+                 activeBubble.type === 'pattern' ? <Orbit size={14} /> :
+                 activeBubble.type === 'anim_config' ? <Activity size={14} /> :
+                 activeBubble.type === 'camera' ? <Camera size={14} /> :
+                 <Timer size={14} />}
+                {activeBubble.isAux !== undefined ? (activeBubble.isAux ? 'Aux ' : 'Text ') : ''}
+                {activeBubble.type === 'style' ? 'Style' : 
+                 activeBubble.type === 'animation' ? 'Animation' :
+                 activeBubble.type === 'speech' ? 'Speech' :
+                 activeBubble.type === 'binaural' ? 'Binaural' :
+                 activeBubble.type === 'audio' ? 'Audio' :
+                 activeBubble.type === 'pattern' ? 'Pattern' :
+                 activeBubble.type === 'anim_config' ? 'Anim Config' :
+                 activeBubble.type === 'camera' ? 'Camera' :
+                 'Metronome'}
               </h4>
               <button onClick={() => setActiveBubble(null)} className="p-1 text-zinc-500 hover:text-white transition-colors">
                 <X size={14} />
@@ -444,7 +493,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                     </div>
                   )}
                 </>
-              ) : (
+              ) : activeBubble.type === 'animation' ? (
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Animation Type</label>
@@ -475,6 +524,295 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                     onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxAnimIntensity' : 'textAnimIntensity', val)}
                   />
                 </>
+              ) : activeBubble.type === 'speech' ? (
+                <>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Enable Speech Synthesis</label>
+                    <select value={seg.config.speech_synth ? 'true' : 'false'} onChange={(e) => updateConfig(index, 'speech_synth', e.target.value === 'true')} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                      <option value="false">Off</option>
+                      <option value="true">On</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Voice</label>
+                    <input type="text" value={seg.config.speech_voice || 'af_heart'} onChange={(e) => updateConfig(index, 'speech_voice', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Speed"
+                      min={0.1}
+                      max={5}
+                      step={0.1}
+                      value={seg.config.speech_speed ?? 1}
+                      onChange={(val) => updateConfig(index, 'speech_speed', val)}
+                    />
+                  </div>
+                </>
+              ) : activeBubble.type === 'binaural' ? (
+                <>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Binaural Mode</label>
+                    <select value={seg.config.binaural} onChange={(e) => updateConfig(index, 'binaural', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                      <option value="off">Off</option>
+                      <option value="focus">Focus</option>
+                      <option value="relax">Relax</option>
+                      <option value="sleep">Sleep</option>
+                      <option value="custom">Custom</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Carrier Freq (Hz)"
+                      min={0}
+                      max={1000}
+                      step={1}
+                      value={seg.config.carrierFreq ?? 200}
+                      onChange={(val) => updateConfig(index, 'carrierFreq', val)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Beat Freq (Hz)"
+                      min={0}
+                      max={40}
+                      step={0.1}
+                      value={seg.config.beatFreq ?? 10}
+                      onChange={(val) => updateConfig(index, 'beatFreq', val)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Amp Mod (Hz)"
+                      min={0}
+                      max={40}
+                      step={0.1}
+                      value={seg.config.ampModulation ?? 0}
+                      onChange={(val) => updateConfig(index, 'ampModulation', val)}
+                    />
+                  </div>
+                </>
+              ) : activeBubble.type === 'audio' ? (
+                <>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Audio URL</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="https://..."
+                        value={seg.config.audioUrl || ''} 
+                        onChange={(e) => updateConfig(index, 'audioUrl', e.target.value)} 
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0" 
+                      />
+                      <button
+                        onClick={handleTranscribe}
+                        disabled={!seg.config.audioUrl || isTranscribing}
+                        className="p-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 border border-zinc-700 rounded-lg text-emerald-400 transition-colors"
+                      >
+                        {isTranscribing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="flex items-center justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg cursor-pointer transition-colors text-zinc-300 text-xs gap-2">
+                      <Upload size={14} />
+                      Upload File
+                      <input 
+                        type="file" 
+                        accept="audio/*,video/*" 
+                        className="hidden" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const url = URL.createObjectURL(file);
+                            updateConfig(index, 'audioUrl', url);
+                          }
+                        }} 
+                      />
+                    </label>
+                  </div>
+                </>
+              ) : activeBubble.type === 'pattern' ? (
+                <>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern</label>
+                    <select value={seg.config.pattern} onChange={(e) => updateConfig(index, 'pattern', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                      <option value="spiral">Spiral</option>
+                      <option value="tunnel">Tunnel</option>
+                      <option value="rings">Rings</option>
+                      <option value="particles">Particles</option>
+                      <option value="mandala">Mandala</option>
+                      <option value="kaleidoscope">Kaleidoscope</option>
+                      <option value="waves">Waves</option>
+                      <option value="pulse">Pulse</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern Type</label>
+                    <select value={seg.config.patternType || 'default'} onChange={(e) => updateConfig(index, 'patternType', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                      <option value="default">Default</option>
+                      <option value="double">Double (Spiral)</option>
+                      <option value="galaxy">Galaxy (Spiral)</option>
+                      <option value="sphere">Sphere (Rings)</option>
+                      <option value="cylinder">Cylinder (Rings)</option>
+                      <option value="hypnotic">Hypnotic</option>
+                      <option value="breathing">Breathing</option>
+                      <option value="infinite">Infinite</option>
+                      <option value="vortex">Vortex</option>
+                      <option value="sacred_geometry">Sacred Geometry</option>
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Face Camera</label>
+                    <select value={seg.config.patternFaceCamera === undefined ? 'true' : (seg.config.patternFaceCamera ? 'true' : 'false')} onChange={(e) => updateConfig(index, 'patternFaceCamera', e.target.value === 'true')} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                      <option value="false">Off</option>
+                      <option value="true">On</option>
+                    </select>
+                  </div>
+                </>
+              ) : activeBubble.type === 'anim_config' ? (
+                <>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Pattern Speed"
+                      min={0}
+                      max={5}
+                      step={0.1}
+                      value={seg.config.patternSpeed ?? 1.0}
+                      onChange={(val) => updateConfig(index, 'patternSpeed', val)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Pattern Scale"
+                      min={0.1}
+                      max={5}
+                      step={0.1}
+                      value={seg.config.patternScale ?? 1.0}
+                      onChange={(val) => updateConfig(index, 'patternScale', val)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Complexity"
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={seg.config.patternComplexity ?? 1}
+                      onChange={(val) => updateConfig(index, 'patternComplexity', val)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 1</label>
+                    <div className="flex gap-2">
+                      <input type="color" value={seg.config.patternColor1 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
+                      <input type="text" value={seg.config.patternColor1 || ''} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 2</label>
+                    <div className="flex gap-2">
+                      <input type="color" value={seg.config.patternColor2 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
+                      <input type="text" value={seg.config.patternColor2 || ''} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
+                    </div>
+                  </div>
+                </>
+              ) : activeBubble.type === 'camera' ? (
+                <>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Camera Mode</label>
+                    <select value={seg.config.camera} onChange={(e) => updateConfig(index, 'camera', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                      <option value="static">Static</option>
+                      <option value="orbit">Orbit</option>
+                      <option value="fly">Fly</option>
+                      <option value="pan">Pan</option>
+                    </select>
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Camera Speed"
+                      min={0}
+                      max={5}
+                      step={0.1}
+                      value={seg.config.cameraSpeed ?? 1.0}
+                      onChange={(val) => updateConfig(index, 'cameraSpeed', val)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-1">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Radius</label>
+                    <input type="number" step="0.5" value={seg.config.cameraRadius ?? ''} onChange={(e) => updateConfig(index, 'cameraRadius', parseFloat(e.target.value) || undefined)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-1">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Height</label>
+                    <input type="number" step="0.1" value={seg.config.cameraHeight ?? ''} onChange={(e) => updateConfig(index, 'cameraHeight', parseFloat(e.target.value) || undefined)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-1">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Target X</label>
+                    <input type="number" step="0.5" value={seg.config.cameraTargetX ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetX', parseFloat(e.target.value) || 0)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-1">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Target Y</label>
+                    <input type="number" step="0.5" value={seg.config.cameraTargetY ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetY', parseFloat(e.target.value) || 0)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-1">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Target Z</label>
+                    <input type="number" step="0.5" value={seg.config.cameraTargetZ ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetZ', parseFloat(e.target.value) || 0)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-1">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">FOV</label>
+                    <input type="number" step="0.1" value={seg.config.cameraFov ?? ''} onChange={(e) => updateConfig(index, 'cameraFov', parseFloat(e.target.value) || undefined)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
+                  </div>
+                </>
+              ) : activeBubble.type === 'audio' ? (
+                <>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Audio URL</label>
+                    <div className="flex gap-2">
+                      <input 
+                        type="text" 
+                        placeholder="https://..."
+                        value={seg.config.audioUrl || ''} 
+                        onChange={(e) => updateConfig(index, 'audioUrl', e.target.value)} 
+                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0" 
+                      />
+                      <button
+                        onClick={handleTranscribe}
+                        disabled={!seg.config.audioUrl || isTranscribing}
+                        className="p-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 border border-zinc-700 rounded-lg text-emerald-400 transition-colors"
+                      >
+                        {isTranscribing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="flex items-center justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg cursor-pointer transition-colors text-zinc-300 text-xs gap-2">
+                      <Upload size={14} />
+                      Upload File
+                      <input 
+                        type="file" 
+                        accept="audio/*,video/*" 
+                        className="hidden" 
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) {
+                            const url = URL.createObjectURL(file);
+                            updateConfig(index, 'audioUrl', url);
+                          }
+                        }} 
+                      />
+                    </label>
+                  </div>
+                </>
+              ) : (
+                <div className="col-span-2">
+                  <SliderInput
+                    label="Metronome (BPM)"
+                    min={0}
+                    max={300}
+                    step={1}
+                    value={seg.config.metronome ?? 0}
+                    onChange={(val) => updateConfig(index, 'metronome', val)}
+                  />
+                </div>
               )}
             </div>
           </div>
@@ -509,316 +847,34 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
         />
       </div>
 
-      <div className="border border-zinc-800 rounded-lg overflow-hidden">
+      <div className="grid grid-cols-3 gap-2 mt-1">
         <button 
-          onClick={() => setIsConfigOpen(!isConfigOpen)}
-          className="w-full flex items-center justify-between p-3 bg-zinc-900/50 hover:bg-zinc-900 text-sm font-medium text-zinc-300 transition-colors"
+          onClick={() => setActiveBubble(activeBubble?.type === 'pattern' ? null : { type: 'pattern' })}
+          data-bubble-toggle="true"
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-wider ${activeBubble?.type === 'pattern' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'text-zinc-400 bg-zinc-900/50 border-zinc-800 hover:text-white hover:bg-zinc-900 hover:border-zinc-700'}`}
+          title="Pattern Settings"
         >
-          <span>Pattern/Cam/Audio</span>
-          {isConfigOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          <Orbit size={14} />
+          Pattern
         </button>
-        
-        {isConfigOpen && (
-          <div className="p-4 bg-zinc-950 flex flex-col gap-4 border-t border-zinc-800">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-zinc-500">Pattern</label>
-                <select value={seg.config.pattern} onChange={(e) => updateConfig(index, 'pattern', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                  <option value="spiral">Spiral</option>
-                  <option value="tunnel">Tunnel</option>
-                  <option value="rings">Rings</option>
-                  <option value="particles">Particles</option>
-                  <option value="mandala">Mandala</option>
-                  <option value="kaleidoscope">Kaleidoscope</option>
-                  <option value="waves">Waves</option>
-                  <option value="pulse">Pulse</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-zinc-500">Pattern Type</label>
-                <select value={seg.config.patternType || 'default'} onChange={(e) => updateConfig(index, 'patternType', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                  <option value="default">Default</option>
-                  <option value="double">Double (Spiral)</option>
-                  <option value="galaxy">Galaxy (Spiral)</option>
-                  <option value="sphere">Sphere (Rings)</option>
-                  <option value="cylinder">Cylinder (Rings)</option>
-                  <option value="hypnotic">Hypnotic</option>
-                  <option value="breathing">Breathing</option>
-                  <option value="infinite">Infinite</option>
-                  <option value="vortex">Vortex</option>
-                  <option value="sacred_geometry">Sacred Geometry</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-zinc-500">Pattern Face Camera</label>
-                <select value={seg.config.patternFaceCamera === undefined ? 'true' : (seg.config.patternFaceCamera ? 'true' : 'false')} onChange={(e) => updateConfig(index, 'patternFaceCamera', e.target.value === 'true')} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                  <option value="false">Off</option>
-                  <option value="true">On</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <label className="text-xs text-zinc-500">Camera</label>
-                <select value={seg.config.camera} onChange={(e) => updateConfig(index, 'camera', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                  <option value="static">Static</option>
-                  <option value="orbit">Orbit</option>
-                  <option value="fly">Fly</option>
-                  <option value="pan">Pan</option>
-                </select>
-              </div>
-              <div className="flex flex-col gap-1">
-                <SliderInput
-                  label="Camera Speed"
-                  min={0}
-                  max={5}
-                  step={0.1}
-                  value={seg.config.cameraSpeed ?? 1.0}
-                  onChange={(val) => updateConfig(index, 'cameraSpeed', val)}
-                />
-              </div>
-              <div id={`binaural-${index}`} className="flex flex-col gap-1">
-                <label className="text-xs text-zinc-500">Binaural</label>
-                <select value={seg.config.binaural} onChange={(e) => updateConfig(index, 'binaural', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                  <option value="off">Off</option>
-                  <option value="focus">Focus</option>
-                  <option value="relax">Relax</option>
-                  <option value="sleep">Sleep</option>
-                  <option value="custom">Custom</option>
-                </select>
-              </div>
-            </div>
-
-            <div className="border border-zinc-800 rounded-lg overflow-hidden mt-2">
-              <button 
-                onClick={() => setIsAdvancedAnimOpen(!isAdvancedAnimOpen)}
-                className="w-full flex items-center justify-between p-3 bg-zinc-900/30 hover:bg-zinc-900/80 text-sm font-medium text-zinc-400 transition-colors"
-              >
-                <span>Advanced Animation</span>
-                {isAdvancedAnimOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </button>
-              
-              {isAdvancedAnimOpen && (
-                <div className="p-4 bg-zinc-950 flex flex-col gap-4 border-t border-zinc-800">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1">
-                      <SliderInput
-                        label="Pattern Speed"
-                        min={0}
-                        max={5}
-                        step={0.1}
-                        value={seg.config.patternSpeed ?? 1.0}
-                        onChange={(val) => updateConfig(index, 'patternSpeed', val)}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <SliderInput
-                        label="Pattern Scale"
-                        min={0.1}
-                        max={5}
-                        step={0.1}
-                        value={seg.config.patternScale ?? 1.0}
-                        onChange={(val) => updateConfig(index, 'patternScale', val)}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <SliderInput
-                        label="Complexity"
-                        min={1}
-                        max={10}
-                        step={1}
-                        value={seg.config.patternComplexity ?? 1}
-                        onChange={(val) => updateConfig(index, 'patternComplexity', val)}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-zinc-500">Color 1</label>
-                      <div className="flex gap-2">
-                        <input type="color" value={seg.config.patternColor1 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg w-10 h-10 p-1 cursor-pointer" />
-                        <input type="text" value={seg.config.patternColor1 || ''} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 flex-1" placeholder="#ffffff" />
-                      </div>
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-zinc-500">Color 2</label>
-                      <div className="flex gap-2">
-                        <input type="color" value={seg.config.patternColor2 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg w-10 h-10 p-1 cursor-pointer" />
-                        <input type="text" value={seg.config.patternColor2 || ''} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 flex-1" placeholder="#ffffff" />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="border border-zinc-800 rounded-lg overflow-hidden mt-2">
-              <button 
-                onClick={() => setIsAdvancedCamOpen(!isAdvancedCamOpen)}
-                className="w-full flex items-center justify-between p-3 bg-zinc-900/30 hover:bg-zinc-900/80 text-sm font-medium text-zinc-400 transition-colors"
-              >
-                <span>Advanced Camera</span>
-                {isAdvancedCamOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </button>
-              
-              {isAdvancedCamOpen && (
-                <div className="p-4 bg-zinc-950 flex flex-col gap-4 border-t border-zinc-800">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-zinc-500">Radius</label>
-                      <input type="number" step="0.5" value={seg.config.cameraRadius ?? ''} onChange={(e) => updateConfig(index, 'cameraRadius', parseFloat(e.target.value) || undefined)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-zinc-500">Height (Beta)</label>
-                      <input type="number" step="0.1" value={seg.config.cameraHeight ?? ''} onChange={(e) => updateConfig(index, 'cameraHeight', parseFloat(e.target.value) || undefined)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-zinc-500">Target X</label>
-                      <input type="number" step="0.5" value={seg.config.cameraTargetX ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetX', parseFloat(e.target.value) || 0)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-zinc-500">Target Y</label>
-                      <input type="number" step="0.5" value={seg.config.cameraTargetY ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetY', parseFloat(e.target.value) || 0)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-zinc-500">Target Z</label>
-                      <input type="number" step="0.5" value={seg.config.cameraTargetZ ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetZ', parseFloat(e.target.value) || 0)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <label className="text-xs text-zinc-500">FOV</label>
-                      <input type="number" step="0.1" value={seg.config.cameraFov ?? ''} onChange={(e) => updateConfig(index, 'cameraFov', parseFloat(e.target.value) || undefined)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div id={`advanced-audio-${index}`} className="border border-zinc-800 rounded-lg overflow-hidden mt-2">
-              <button 
-                onClick={() => setIsAdvancedAudioOpen(!isAdvancedAudioOpen)}
-                className="w-full flex items-center justify-between p-3 bg-zinc-900/30 hover:bg-zinc-900/80 text-sm font-medium text-zinc-400 transition-colors"
-              >
-                <span>Advanced Audio</span>
-                {isAdvancedAudioOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </button>
-              
-              {isAdvancedAudioOpen && (
-                <div className="p-4 bg-zinc-950 flex flex-col gap-4 border-t border-zinc-800">
-                  <div id={`metronome-${index}`} className="flex flex-col gap-1">
-                    <SliderInput
-                      label="Metronome (BPM)"
-                      min={0}
-                      max={300}
-                      step={1}
-                      value={seg.config.metronome ?? 0}
-                      onChange={(val) => updateConfig(index, 'metronome', val)}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4 pt-2 border-t border-zinc-800">
-                    <div className="flex flex-col gap-1">
-                      <SliderInput
-                        label="Carrier Freq (Hz)"
-                        min={0}
-                        max={1000}
-                        step={1}
-                        value={seg.config.carrierFreq ?? 200}
-                        onChange={(val) => updateConfig(index, 'carrierFreq', val)}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <SliderInput
-                        label="Beat Freq (Hz)"
-                        min={0}
-                        max={40}
-                        step={0.1}
-                        value={seg.config.beatFreq ?? 10}
-                        onChange={(val) => updateConfig(index, 'beatFreq', val)}
-                      />
-                    </div>
-                    <div className="flex flex-col gap-1">
-                      <SliderInput
-                        label="Amp Mod (Hz)"
-                        min={0}
-                        max={40}
-                        step={0.1}
-                        value={seg.config.ampModulation ?? 0}
-                        onChange={(val) => updateConfig(index, 'ampModulation', val)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1 pt-2 border-t border-zinc-800">
-                    <label className="text-xs text-zinc-500">Custom Audio URL</label>
-                    <div className="flex gap-2 min-w-0">
-                      <input 
-                        type="text" 
-                        placeholder="https://... or drop an audio/video file anywhere"
-                        value={seg.config.audioUrl || ''} 
-                        onChange={(e) => updateConfig(index, 'audioUrl', e.target.value)} 
-                        className="flex-1 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0" 
-                      />
-                      <button
-                        onClick={handleTranscribe}
-                        disabled={!seg.config.audioUrl || isTranscribing}
-                        className="p-2 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed border border-zinc-700 rounded-lg text-emerald-400 transition-colors"
-                        title="Transcribe Audio"
-                      >
-                        {isTranscribing ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-                      </button>
-                      <label className="flex items-center justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg cursor-pointer transition-colors text-zinc-300">
-                        <Upload size={16} />
-                        <input 
-                          type="file" 
-                          accept="audio/*,video/*" 
-                          className="hidden" 
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) {
-                              const url = URL.createObjectURL(file);
-                              updateConfig(index, 'audioUrl', url);
-                            }
-                          }} 
-                        />
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-            <div className="border border-zinc-800 rounded-lg overflow-hidden mt-2">
-              <button 
-                onClick={() => setIsAdvancedSpeechOpen(!isAdvancedSpeechOpen)}
-                className="w-full flex items-center justify-between p-3 bg-zinc-900/30 hover:bg-zinc-900/80 text-sm font-medium text-zinc-400 transition-colors"
-              >
-                <span>Advanced Speech</span>
-                {isAdvancedSpeechOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              </button>
-              
-              {isAdvancedSpeechOpen && (
-                <div className="p-4 bg-zinc-950 flex flex-col gap-4 border-t border-zinc-800">
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-zinc-500">Enable Speech Synthesis</label>
-                    <select value={seg.config.speech_synth ? 'true' : 'false'} onChange={(e) => updateConfig(index, 'speech_synth', e.target.value === 'true')} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                      <option value="false">Off</option>
-                      <option value="true">On</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <label className="text-xs text-zinc-500">Voice</label>
-                    <input type="text" value={seg.config.speech_voice || 'af_heart'} onChange={(e) => updateConfig(index, 'speech_voice', e.target.value)} className="bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    <SliderInput
-                      label="Speed"
-                      min={0.1}
-                      max={5}
-                      step={0.1}
-                      value={seg.config.speech_speed ?? 1}
-                      onChange={(val) => updateConfig(index, 'speech_speed', val)}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        <button 
+          onClick={() => setActiveBubble(activeBubble?.type === 'anim_config' ? null : { type: 'anim_config' })}
+          data-bubble-toggle="true"
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-wider ${activeBubble?.type === 'anim_config' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'text-zinc-400 bg-zinc-900/50 border-zinc-800 hover:text-white hover:bg-zinc-900 hover:border-zinc-700'}`}
+          title="Animation Settings"
+        >
+          <Activity size={14} />
+          Animation
+        </button>
+        <button 
+          onClick={() => setActiveBubble(activeBubble?.type === 'camera' ? null : { type: 'camera' })}
+          data-bubble-toggle="true"
+          className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-wider ${activeBubble?.type === 'camera' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'text-zinc-400 bg-zinc-900/50 border-zinc-800 hover:text-white hover:bg-zinc-900 hover:border-zinc-700'}`}
+          title="Camera Settings"
+        >
+          <Camera size={14} />
+          Camera
+        </button>
       </div>
     </div>
   );
