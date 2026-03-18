@@ -53,13 +53,18 @@ export class SceneManager {
     return this.scene;
   }
 
+  private resizeHandler = () => {
+    this.engine.resize();
+  };
+
   /**
    * Constructor
    * Initializes the engine, scene, camera, and starts the render loop.
    */
   constructor(canvas: HTMLCanvasElement) {
-    this.engine = new Engine(canvas, true);
+    this.engine = new Engine(canvas, true, { preserveDrawingBuffer: false, stencil: false });
     this.scene = new Scene(this.engine);
+    this.scene.skipPointerMovePicking = true; // Optimization: don't pick on pointer move unless needed
     this.scene.clearColor = new Color3(0.05, 0.05, 0.05).toColor4(1);
     this.scene.fogMode = Scene.FOGMODE_EXP2;
     this.scene.fogDensity = 0.03;
@@ -93,9 +98,7 @@ export class SceneManager {
       this.scene.render();
     });
 
-    window.addEventListener("resize", () => {
-      this.engine.resize();
-    });
+    window.addEventListener("resize", this.resizeHandler);
   }
 
   private async initXR() {
@@ -407,7 +410,16 @@ export class SceneManager {
     // Clear old media
     this.mediaControls.forEach(c => c.dispose());
     this.mediaControls = [];
-    this.mediaMeshes.forEach(m => m.dispose());
+    this.mediaMeshes.forEach(m => {
+      if (m.material) {
+        const mat = m.material as StandardMaterial;
+        if (mat.diffuseTexture) {
+          mat.diffuseTexture.dispose();
+        }
+        mat.dispose();
+      }
+      m.dispose();
+    });
     this.mediaMeshes = [];
 
     const hasAuxMedia = media.some(m => m.layer === 'aux');
@@ -610,7 +622,12 @@ export class SceneManager {
   }
 
   private clearCurrentMeshes() {
-    this.currentMeshes.forEach(m => m.dispose());
+    this.currentMeshes.forEach(m => {
+      if (m.material) {
+        m.material.dispose();
+      }
+      m.dispose();
+    });
     this.currentMeshes = [];
     if (this.particleSystem) {
       this.particleSystem.dispose();
@@ -1280,6 +1297,7 @@ export class SceneManager {
   }
 
   public dispose() {
+    window.removeEventListener("resize", this.resizeHandler);
     this.engine.dispose();
   }
 }

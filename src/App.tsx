@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Play, Square, Edit3, Eye, Settings, Share2, HelpCircle, X, Ear, Loader2 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
 import { KokoroTTS } from 'kokoro-js';
 import { env } from '@huggingface/transformers';
 import Editor from 'react-simple-code-editor';
@@ -98,19 +97,29 @@ export default function App() {
    */
   const handleMouseDown = (e: React.MouseEvent) => {
     setIsDragging(true);
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
   };
 
-  const handleMouseMove = (e: MouseEvent) => {
-    setSidebarWidth(Math.max(200, Math.min(800, e.clientX)));
-  };
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (isDragging) {
+        setSidebarWidth(Math.max(200, Math.min(800, e.clientX)));
+      }
+    };
 
-  const handleMouseUp = () => {
-    setIsDragging(false);
-    document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
-  };
+    const handleMouseUp = () => {
+      setIsDragging(false);
+    };
+
+    if (isDragging) {
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [isDragging]);
 
   const tutorialSteps: Step[] = [
     {
@@ -404,7 +413,16 @@ camera: orbit
         setIsInitializing(false);
       });
     }
-    
+
+    return () => {
+      if (sceneManagerRef.current) {
+        sceneManagerRef.current.dispose();
+        sceneManagerRef.current = null;
+      }
+    };
+  }, []);
+
+  useEffect(() => {
     if (sceneManagerRef.current) {
       sceneManagerRef.current.onPlayPause = () => {
         setIsPlaying(prev => {
@@ -452,20 +470,16 @@ camera: orbit
         audioEngine.setVolume(currentVol - 0.1);
       };
     }
-
-    return () => {
-      if (sceneManagerRef.current) {
-        sceneManagerRef.current.dispose();
-        sceneManagerRef.current = null;
-      }
-    };
   }, [segments.length]);
 
   /**
    * Parse Markdown into Timeline Segments
    */
   useEffect(() => {
-    setSegments(parseTimeline(markdown));
+    const timeoutId = setTimeout(() => {
+      setSegments(parseTimeline(markdown));
+    }, 300);
+    return () => clearTimeout(timeoutId);
   }, [markdown]);
 
   /**
@@ -506,6 +520,8 @@ camera: orbit
    */
   useEffect(() => {
     let interval: number | undefined;
+    let isCancelled = false;
+
     if (isPlaying && segments.length > 0) {
       audioEngine.resume();
       
@@ -532,11 +548,15 @@ camera: orbit
         if (speechAudioRef.current) {
           speechAudioRef.current.pause();
           speechAudioRef.current.currentTime = 0;
+          if (speechAudioRef.current.src) {
+            URL.revokeObjectURL(speechAudioRef.current.src);
+          }
         }
         kokoro.generate(currentSegment.text, { 
           voice: currentSegment.config.speech_voice || 'af_heart',
           speed: currentSegment.config.speech_speed || 1
         }).then((audio: any) => {
+          if (isCancelled) return;
           // Play audio
           const blob = new Blob([audio.data], { type: 'audio/wav' });
           const url = URL.createObjectURL(blob);
@@ -565,11 +585,15 @@ camera: orbit
       if (speechAudioRef.current) {
         speechAudioRef.current.pause();
         speechAudioRef.current.currentTime = 0;
+        if (speechAudioRef.current.src) {
+          URL.revokeObjectURL(speechAudioRef.current.src);
+        }
         speechAudioRef.current = null;
       }
     }
 
     return () => {
+      isCancelled = true;
       if (interval !== undefined) clearInterval(interval);
     };
   }, [isPlaying, currentSegmentIndex, segments]);
@@ -622,7 +646,7 @@ camera: orbit
           </div>
           <div className="flex gap-2">
             {isMobile && (
-              <button onClick={() => setMode('view')} className="p-2 text-zinc-400 hover:text-white">
+              <button onClick={() => setMode('view')} className="p-2 text-zinc-400 hover:text-white" aria-label="Close edit mode">
                 <X size={20} />
               </button>
             )}
@@ -630,18 +654,21 @@ camera: orbit
               onClick={() => setIsHelpOpen(true)}
               className="p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
               title="Help & Syntax"
+              aria-label="Help"
             >
               <HelpCircle size={16} />
             </button>
             <button 
               onClick={handleShare}
               className="tutorial-share-btn p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              aria-label="Share"
             >
               <Share2 size={16} /> Share
             </button>
             <button 
               onClick={isPlaying ? handleStop : handlePlay}
               className={`tutorial-play-btn p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors ${isPlaying ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30' : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'}`}
+              aria-label={isPlaying ? "Stop" : "Play"}
             >
               {isPlaying ? <><Square size={16} /> Stop</> : <><Play size={16} /> Play</>}
             </button>
@@ -661,18 +688,21 @@ camera: orbit
               onClick={() => setIsAnalysisOpen(true)}
               className="tutorial-magic-btn px-4 py-3 text-zinc-400 hover:text-emerald-400 hover:bg-zinc-800/50 transition-colors border-r border-zinc-800"
               title="Import & Analyze Audio"
+              aria-label="Import & Analyze Audio"
             >
               <Wand2 size={18} />
             </button>
             <button 
               onClick={() => setActiveTab('visual')}
               className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'visual' ? 'text-emerald-400 border-b-2 border-emerald-400 bg-zinc-800/50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/30'}`}
+              aria-label="Visual Editor Tab"
             >
               Visual Editor
             </button>
             <button 
               onClick={() => setActiveTab('markdown')}
               className={`flex-1 py-3 text-sm font-medium transition-colors ${activeTab === 'markdown' ? 'text-emerald-400 border-b-2 border-emerald-400 bg-zinc-800/50' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/30'}`}
+              aria-label="Markdown Editor Tab"
             >
               Markdown
             </button>
@@ -737,6 +767,7 @@ camera: orbit
                     onClick={handleShare}
                     className="tutorial-share-btn p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
                     title="Share Experience"
+                    aria-label="Share Experience"
                   >
                     <Share2 size={16} />
                   </button>
@@ -744,6 +775,7 @@ camera: orbit
                     onClick={() => setIsHelpOpen(true)}
                     className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
                     title="Help & Syntax"
+                    aria-label="Help & Syntax"
                   >
                     <HelpCircle size={16} />
                   </button>
@@ -753,6 +785,7 @@ camera: orbit
                 onClick={() => setMode('edit')}
                 className="p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
                 title="Edit Timeline"
+                aria-label="Edit Timeline"
               >
                 <Edit3 size={16} /> {!isPlaying && <span className="hidden sm:inline">Edit</span>}
               </button>
@@ -760,6 +793,7 @@ camera: orbit
                 onClick={isPlaying ? handleStop : handlePlay}
                 className={`tutorial-play-btn p-2 rounded-lg flex items-center gap-2 text-sm font-medium backdrop-blur-sm transition-colors ${isPlaying ? 'bg-red-500/80 text-white hover:bg-red-600' : 'bg-emerald-500/80 text-white hover:bg-emerald-600'}`}
                 title={isPlaying ? "Stop" : "Play"}
+                aria-label={isPlaying ? "Stop" : "Play"}
               >
                 {isPlaying ? <Square size={16} /> : <><Play size={16} /> <span className="hidden sm:inline">Play</span></>}
               </button>
@@ -791,6 +825,7 @@ camera: orbit
           <button
             className="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-4 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] hover:bg-emerald-500/30 hover:shadow-[0_0_25px_rgba(16,185,129,0.7)] transition-all duration-300 group"
             title="add binaural audio"
+            aria-label="Add binaural audio"
             onClick={() => {
               const parsedSegments = parseTimeline(markdown);
               const binaurals = ['focus', 'relax', 'sleep'];
@@ -968,7 +1003,7 @@ camera: orbit
         <div className={`absolute top-0 right-0 h-full w-80 bg-zinc-900 border-l border-zinc-800 shadow-2xl z-50 transform transition-transform duration-300 flex flex-col ${isHelpOpen ? 'translate-x-0' : 'translate-x-full'}`}>
           <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
             <h2 className="text-lg font-semibold text-zinc-100 flex items-center gap-2"><HelpCircle size={18} className="text-emerald-400"/> Syntax & Options</h2>
-            <button onClick={() => setIsHelpOpen(false)} className="text-zinc-400 hover:text-white transition-colors p-1 rounded-md hover:bg-zinc-800">
+            <button onClick={() => setIsHelpOpen(false)} className="text-zinc-400 hover:text-white transition-colors p-1 rounded-md hover:bg-zinc-800" aria-label="Close help">
               <X size={20} />
             </button>
           </div>
