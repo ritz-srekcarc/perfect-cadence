@@ -6,6 +6,7 @@ export interface TextToken {
   interval?: number;
   count?: number;
   words?: string[];
+  url?: string;
   bold: boolean;
   italic: boolean;
 }
@@ -76,15 +77,25 @@ export function parseMarkdownText(text: string): TextLine[] {
         if (wlMatch) {
           const interval = parseFloat(wlMatch[1]);
           const count = parseInt(wlMatch[2]);
-          let words = wlMatch[3].split(',').map(w => w.trim()).filter(w => w.length > 0);
-          if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
-            words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
+          const rawWords = wlMatch[3].trim();
+          let words: string[] = [];
+          let url: string | undefined;
+
+          if (rawWords.startsWith('http://') || rawWords.startsWith('https://')) {
+            url = rawWords;
+          } else {
+            words = rawWords.split(',').map(w => w.trim()).filter(w => w.length > 0);
+            if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
+              words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
+            }
           }
+
           tokens.push({
             type: 'wordlist',
             interval,
             count,
             words,
+            url,
             bold: false,
             italic: false
           });
@@ -95,15 +106,25 @@ export function parseMarkdownText(text: string): TextLine[] {
         if (wlMatch) {
           const interval = parseFloat(wlMatch[1]);
           const count = parseInt(wlMatch[2]);
-          let words = wlMatch[3].split(',').map(w => w.trim()).filter(w => w.length > 0);
-          if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
-            words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
+          const rawWords = wlMatch[3].trim();
+          let words: string[] = [];
+          let url: string | undefined;
+
+          if (rawWords.startsWith('http://') || rawWords.startsWith('https://')) {
+            url = rawWords;
+          } else {
+            words = rawWords.split(',').map(w => w.trim()).filter(w => w.length > 0);
+            if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
+              words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
+            }
           }
+
           tokens.push({
             type: 'wordlist',
             interval,
             count,
             words,
+            url,
             bold: true,
             italic: true
           });
@@ -121,15 +142,25 @@ export function parseMarkdownText(text: string): TextLine[] {
         if (wlMatch) {
           const interval = parseFloat(wlMatch[1]);
           const count = parseInt(wlMatch[2]);
-          let words = wlMatch[3].split(',').map(w => w.trim()).filter(w => w.length > 0);
-          if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
-            words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
+          const rawWords = wlMatch[3].trim();
+          let words: string[] = [];
+          let url: string | undefined;
+
+          if (rawWords.startsWith('http://') || rawWords.startsWith('https://')) {
+            url = rawWords;
+          } else {
+            words = rawWords.split(',').map(w => w.trim()).filter(w => w.length > 0);
+            if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
+              words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
+            }
           }
+
           tokens.push({
             type: 'wordlist',
             interval,
             count,
             words,
+            url,
             bold: true,
             italic: false
           });
@@ -147,15 +178,25 @@ export function parseMarkdownText(text: string): TextLine[] {
         if (wlMatch) {
           const interval = parseFloat(wlMatch[1]);
           const count = parseInt(wlMatch[2]);
-          let words = wlMatch[3].split(',').map(w => w.trim()).filter(w => w.length > 0);
-          if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
-            words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
+          const rawWords = wlMatch[3].trim();
+          let words: string[] = [];
+          let url: string | undefined;
+
+          if (rawWords.startsWith('http://') || rawWords.startsWith('https://')) {
+            url = rawWords;
+          } else {
+            words = rawWords.split(',').map(w => w.trim()).filter(w => w.length > 0);
+            if (words.length === 1 && PREBUILT_WORDLISTS[words[0].toLowerCase()]) {
+              words = PREBUILT_WORDLISTS[words[0].toLowerCase()];
+            }
           }
+
           tokens.push({
             type: 'wordlist',
             interval,
             count,
             words,
+            url,
             bold: false,
             italic: true
           });

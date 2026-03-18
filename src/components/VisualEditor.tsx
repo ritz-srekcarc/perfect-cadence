@@ -1,13 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { TimelineSegment, SegmentConfig, parseSegmentContent, MediaItem } from '../timelineParser';
-import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2, Info, Bold, Italic, Heading1, Heading2, List, ListOrdered, Ear, Timer, Image, Tv, Volume2, Paintbrush, Film, X, Speech, Orbit, Activity, Camera } from 'lucide-react';
+import { TimelineSegment, SegmentConfig, parseSegmentContent, MediaItem, PREBUILT_WORDLISTS } from '../timelineParser';
+import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2, Info, Bold, Italic, Heading1, Heading2, List, ListOrdered, Ear, Timer, Image, Tv, Volume2, Paintbrush, Film, X, Speech, Orbit, Activity, Camera, LayoutGrid, Grid, Layout, Link as LinkIcon, FileUp } from 'lucide-react';
 import { transcribeAudio } from '../services/audioAnalysisService';
-import Editor from 'react-simple-code-editor';
 import ReactQuill from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-markdown';
-import 'prismjs/themes/prism-tomorrow.css';
 
 /**
  * VisualEditor
@@ -33,7 +29,7 @@ interface SegmentEditorProps {
 }
 
 const SliderInput = ({ label, value, min, max, step, onChange }: { label: string, value: number, min: number, max: number, step: number, onChange: (val: number) => void }) => (
-  <div className="flex flex-col gap-1">
+  <div className="flex flex-col gap-1" onMouseDown={(e) => e.stopPropagation()}>
     <div className="flex justify-between items-center">
       <label className="text-[10px] text-zinc-500">{label}</label>
       <span className="text-[10px] text-zinc-400 font-mono">{value}</span>
@@ -45,6 +41,7 @@ const SliderInput = ({ label, value, min, max, step, onChange }: { label: string
       step={step}
       value={value}
       onChange={(e) => onChange(parseFloat(e.target.value))}
+      onMouseDown={(e) => e.stopPropagation()}
       className="w-full accent-emerald-500"
     />
   </div>
@@ -58,21 +55,24 @@ const toHtml = (md: string) => {
   let htmlLines = lines.map(line => {
     let processed = line;
     
+    // Escape HTML first
+    processed = processed.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    
     // Bold
     processed = processed.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     // Italic
     processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
     // Media
-    processed = processed.replace(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g, '<span class="text-emerald-400">[Media: $3]</span>');
+    processed = processed.replace(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g, (match) => `<span style="color: #34d399;">${match}</span>`);
     // Wordlist
-    processed = processed.replace(/!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g, '<span class="text-emerald-400">[Wordlist: $3]</span>');
+    processed = processed.replace(/!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g, (match) => `<span style="color: #34d399;">${match}</span>`);
 
     // Block elements - don't wrap these in <p>
     if (processed.startsWith('# ')) {
       return `<h1>${processed.substring(2)}</h1>`;
     }
-    if (processed.startsWith('> ')) {
-      return `<blockquote>${processed.substring(2)}</blockquote>`;
+    if (processed.startsWith('&gt; ')) {
+      return `<blockquote>${processed.substring(5)}</blockquote>`;
     }
     
     return processed.trim() ? `<p>${processed}</p>` : '<p><br></p>';
@@ -91,37 +91,166 @@ const fromHtml = (html: string) => {
   md = md.replace(/\u00A0/g, ' ');
 
   // Convert block elements first
-  md = md.replace(/<h1>(.*?)<\/h1>/g, '# $1\n');
-  md = md.replace(/<blockquote>(.*?)<\/blockquote>/g, '> $1\n');
+  md = md.replace(/<h1[^>]*>(.*?)<\/h1>/g, '# $1\n');
+  md = md.replace(/<blockquote[^>]*>(.*?)<\/blockquote>/g, '> $1\n');
   
   // Inline formatting
-  md = md.replace(/<strong>(.*?)<\/strong>/g, '**$1**');
-  md = md.replace(/<b>(.*?)<\/b>/g, '**$1**');
-  md = md.replace(/<em>(.*?)<\/em>/g, '*$1*');
-  md = md.replace(/<i>(.*?)<\/i>/g, '*$1*');
+  md = md.replace(/<strong[^>]*>(.*?)<\/strong>/g, '**$1**');
+  md = md.replace(/<b[^>]*>(.*?)<\/b>/g, '**$1**');
+  md = md.replace(/<em[^>]*>(.*?)<\/em>/g, '*$1*');
+  md = md.replace(/<i[^>]*>(.*?)<\/i>/g, '*$1*');
   
   // Paragraphs and breaks
-  md = md.replace(/<p>(.*?)<\/p>/g, '$1\n');
+  md = md.replace(/<p[^>]*>(.*?)<\/p>/g, '$1\n');
   md = md.replace(/<br\s*\/?>/g, '\n');
   
   // Strip remaining tags
   md = md.replace(/<[^>]+>/g, '');
   
+  // Unescape HTML entities
+  md = md.replace(/&lt;/g, '<');
+  md = md.replace(/&gt;/g, '>');
+  md = md.replace(/&amp;/g, '&');
+  
   // Clean up multiple newlines that might have been introduced
   return md.replace(/\n{3,}/g, '\n\n').trim();
 };
 
-const RichTextEditor = ({ markdown, onChange, onInsertImage, onInsertVideo, onInsertWordlist, onOpenPaintbrush, onOpenFilm }: { 
+const QuillComponent = ReactQuill as any;
+
+const RichTextEditor = ({ markdown, onChange, onOpenMediaBubble, onOpenWordlistBubble, onOpenPaintbrush, onOpenFilm, readOnly = false }: { 
   markdown: string, 
   onChange: (md: string) => void,
-  onInsertImage: () => void,
-  onInsertVideo: () => void,
-  onInsertWordlist: () => void,
+  onOpenMediaBubble: (type: 'image' | 'video', index: number) => void,
+  onOpenWordlistBubble: (index: number) => void,
   onOpenPaintbrush: (isAux: boolean) => void,
-  onOpenFilm: (isAux: boolean) => void
+  onOpenFilm: (isAux: boolean) => void,
+  readOnly?: boolean
 }) => {
   const quillRef = useRef<ReactQuill>(null);
-  const toolbarId = `toolbar-${Math.random().toString(36).substr(2, 9)}`;
+  const [toolbarId] = useState(() => `toolbar-${Math.random().toString(36).substr(2, 9)}`);
+  const [activeFormats, setActiveFormats] = useState<Record<string, any>>({});
+
+  const [internalHtml, setInternalHtml] = useState(() => toHtml(markdown));
+  const lastEmittedMd = useRef(markdown);
+
+  useEffect(() => {
+    if (markdown !== lastEmittedMd.current) {
+      setInternalHtml(toHtml(markdown));
+      lastEmittedMd.current = markdown;
+    }
+  }, [markdown]);
+
+  useEffect(() => {
+    if (quillRef.current) {
+      const quill = quillRef.current.getEditor();
+      const handleEditorChange = () => {
+        setActiveFormats(quill.getFormat());
+      };
+      quill.on('editor-change', handleEditorChange);
+      return () => {
+        quill.off('editor-change', handleEditorChange);
+      };
+    }
+  }, []);
+
+  const modules = React.useMemo(() => ({
+    toolbar: `#${toolbarId}`
+  }), [toolbarId]);
+
+  const handleFormat = (format: string, value: any = true) => {
+    if (quillRef.current) {
+      const quill = quillRef.current.getEditor();
+      const currentFormat = quill.getFormat();
+      if (currentFormat[format]) {
+        quill.format(format, false);
+      } else {
+        quill.format(format, value);
+      }
+      setActiveFormats(quill.getFormat());
+    }
+  };
+
+  const handleInsert = (type: 'image' | 'video' | 'wordlist') => {
+    if (!quillRef.current) return;
+    const quill = quillRef.current.getEditor();
+    let range = quill.getSelection();
+    
+    if (!range) {
+      range = { index: 0, length: 0 };
+      quill.setSelection(0, 0);
+    }
+
+    const text = quill.getText();
+    const index = range.index;
+
+    const textBefore = text.substring(0, index);
+    const textAfter = text.substring(index);
+    
+    const lastBang = textBefore.lastIndexOf('!');
+    const lastCloseParenBefore = textBefore.lastIndexOf(')');
+    
+    const nextCloseParen = textAfter.indexOf(')');
+    const nextBangAfter = textAfter.indexOf('!');
+    
+    let isInsideTag = false;
+    let tagContent = '';
+    let tagEndIndex = -1;
+
+    if (lastBang !== -1 && nextCloseParen !== -1) {
+      // Ensure there are no closing parens between the last bang and the cursor
+      // and no new bangs between the cursor and the next closing paren
+      if (lastCloseParenBefore < lastBang && (nextBangAfter === -1 || nextBangAfter > nextCloseParen)) {
+        const between = text.substring(lastBang, index + nextCloseParen + 1);
+        if (between.startsWith('![') || between.startsWith('!{')) {
+          isInsideTag = true;
+          tagContent = between;
+          tagEndIndex = lastBang + between.length;
+        }
+      }
+    }
+
+    if (isInsideTag) {
+      const isMedia = tagContent.startsWith('![');
+      const isWordlist = tagContent.startsWith('!{');
+      
+      const isAppropriate = (type === 'image' || type === 'video') ? isMedia : (type === 'wordlist' ? isWordlist : false);
+
+      if (isAppropriate) {
+        // Find index of this tag
+        const textBeforeTag = text.substring(0, lastBang);
+        if (type === 'image' || type === 'video') {
+          const mediaIndex = (textBeforeTag.match(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g) || []).length;
+          onOpenMediaBubble(type, mediaIndex);
+        } else {
+          const wordlistIndex = (textBeforeTag.match(/!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g) || []).length;
+          onOpenWordlistBubble(wordlistIndex);
+        }
+        return;
+      } else {
+        quill.setSelection(tagEndIndex, 0);
+        range = { index: tagEndIndex, length: 0 };
+      }
+    }
+
+    const insertStr = type === 'wordlist' ? '!{1, 1}(word1,word2)' : (type === 'video' ? '![100,100]()' : '![100]()');
+    quill.insertText(range.index, insertStr, 'user');
+    
+    // Calculate index for the newly inserted item
+    const textBeforeInsert = quill.getText().substring(0, range.index);
+    if (type === 'image' || type === 'video') {
+      const mediaIndex = (textBeforeInsert.match(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g) || []).length;
+      onOpenMediaBubble(type, mediaIndex);
+    } else {
+      const wordlistIndex = (textBeforeInsert.match(/!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g) || []).length;
+      onOpenWordlistBubble(wordlistIndex);
+    }
+    
+    // Only set selection if we're not opening a bubble that needs focus
+    if (type !== 'image' && type !== 'video' && type !== 'wordlist') {
+      quill.setSelection(range.index + insertStr.length, 0);
+    }
+  };
 
   const handlePaintbrushClick = () => {
     if (quillRef.current) {
@@ -139,52 +268,84 @@ const RichTextEditor = ({ markdown, onChange, onInsertImage, onInsertVideo, onIn
     }
   };
 
-  const QuillComponent = ReactQuill as any;
-
   return (
     <div className="rich-text-editor bg-zinc-950 border border-zinc-800 rounded-lg overflow-hidden">
       <div id={toolbarId} className="ql-toolbar ql-snow flex items-center gap-1 flex-nowrap overflow-x-auto scrollbar-hide">
-        <span className="ql-formats flex items-center gap-1 shrink-0">
-          <button className="ql-header shrink-0" value="1"></button>
-          <button className="ql-bold shrink-0"></button>
-          <button className="ql-italic shrink-0"></button>
-          <button className="ql-blockquote shrink-0"></button>
-          <button onClick={handlePaintbrushClick} data-bubble-toggle="true" className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Style Settings">
+        <span className="flex items-center gap-1 shrink-0">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleFormat('header', 1)} className={`!w-auto !h-auto p-1 rounded flex items-center justify-center shrink-0 ${activeFormats.header ? 'text-emerald-400 bg-zinc-800' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`} title="Heading 1">
+            <Heading1 size={16} />
+          </button>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleFormat('bold')} className={`!w-auto !h-auto p-1 rounded flex items-center justify-center shrink-0 ${activeFormats.bold ? 'text-emerald-400 bg-zinc-800' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`} title="Bold">
+            <Bold size={16} />
+          </button>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleFormat('italic')} className={`!w-auto !h-auto p-1 rounded flex items-center justify-center shrink-0 ${activeFormats.italic ? 'text-emerald-400 bg-zinc-800' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`} title="Italic">
+            <Italic size={16} />
+          </button>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleFormat('blockquote')} className={`!w-auto !h-auto p-1 rounded flex items-center justify-center shrink-0 ${activeFormats.blockquote ? 'text-emerald-400 bg-zinc-800' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`} title="Blockquote">
+            <LayoutGrid size={16} />
+          </button>
+          
+          <div className="w-px h-4 bg-zinc-800 mx-1"></div>
+          
+          <button onMouseDown={(e) => e.preventDefault()} onClick={handlePaintbrushClick} data-bubble-toggle="true" className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Style Settings">
             <Paintbrush size={16} />
           </button>
-          <button onClick={handleFilmClick} data-bubble-toggle="true" className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Animation Settings">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={handleFilmClick} data-bubble-toggle="true" className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Animation Settings">
             <Film size={16} />
           </button>
         </span>
-        <span className="ql-formats !mr-0 flex items-center gap-1 border-l border-zinc-800 pl-2 ml-1 shrink-0">
-          <button onClick={onInsertImage} className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Insert Image">
+        <span className="flex items-center gap-1 border-l border-zinc-800 pl-2 ml-1 shrink-0">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleInsert('image')} data-bubble-toggle="true" className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Insert Image">
             <Image size={16} />
           </button>
-          <button onClick={onInsertVideo} className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Insert Video">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleInsert('video')} data-bubble-toggle="true" className="!w-auto !h-auto p-1 text-zinc-400 hover:text-white hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Insert Video">
             <Tv size={16} />
           </button>
-          <button onClick={onInsertWordlist} className="!w-auto !h-auto p-1 text-emerald-400 hover:text-emerald-300 hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Insert Wordlist">
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleInsert('wordlist')} data-bubble-toggle="true" className="!w-auto !h-auto p-1 text-emerald-400 hover:text-emerald-300 hover:bg-zinc-800 rounded flex items-center justify-center shrink-0" title="Insert Wordlist">
             <Sparkles size={16} />
           </button>
         </span>
       </div>
-      <QuillComponent 
-        ref={quillRef}
-        theme="snow"
-        value={toHtml(markdown)}
-        onChange={(content, delta, source) => {
-          if (source === 'user') {
-            const newMd = fromHtml(content);
-            if (newMd !== markdown) {
-              onChange(newMd);
+      <div 
+        className="relative"
+        onFocusCapture={(e) => {
+          if (readOnly) {
+            e.stopPropagation();
+            if (quillRef.current) {
+              quillRef.current.getEditor().blur();
             }
           }
         }}
-        modules={{
-          toolbar: `#${toolbarId}`
-        }}
-        className="text-zinc-200"
-      />
+      >
+        <QuillComponent 
+          ref={quillRef}
+          theme="snow"
+          value={internalHtml}
+          onChange={(content: string, delta: any, source: string) => {
+            setInternalHtml(content);
+            if (source === 'user') {
+              const newMd = fromHtml(content);
+              if (newMd !== lastEmittedMd.current) {
+                lastEmittedMd.current = newMd;
+                onChange(newMd);
+              }
+            }
+          }}
+          modules={modules}
+          readOnly={readOnly}
+          className="text-zinc-200"
+        />
+        {readOnly && (
+          <div 
+            className="absolute inset-0 z-10 cursor-default" 
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+      </div>
       <style>{`
         .ql-toolbar.ql-snow { border: none; background: #18181b; border-bottom: 1px solid #27272a; padding: 4px 8px; display: flex; align-items: center; }
         .ql-container.ql-snow { border: none; font-family: inherit; font-size: 0.875rem; }
@@ -201,27 +362,101 @@ const RichTextEditor = ({ markdown, onChange, onInsertImage, onInsertVideo, onIn
   );
 };
 
+const PREDEFINED_WORDLISTS = [
+  { name: 'Custom', words: '' },
+  { name: 'Relaxation', words: 'relax,breathe,calm,peace,stillness,quiet,serenity,release' },
+  { name: 'Focus', words: 'focus,concentrate,clarity,sharp,direct,intent,presence,alert' },
+  { name: 'Sleep', words: 'sleep,dream,rest,slumber,drift,soft,heavy,night' },
+  { name: 'Energy', words: 'energy,vitality,power,strength,awake,bright,vibrant,flow' },
+  { name: 'Gratitude', words: 'gratitude,thanks,blessing,love,kindness,joy,heart,open' }
+];
+
+const CompactUrlPicker = ({ url, onChange, placeholder = "URL", autoFocus = false }: { url: string, onChange: (url: string) => void, placeholder?: string, autoFocus?: boolean }) => {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const objectUrl = URL.createObjectURL(file);
+      onChange(objectUrl);
+    }
+  };
+
+  return (
+    <div className="flex gap-2 items-center" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="relative flex-1">
+        <input 
+          type="text" 
+          autoFocus={autoFocus}
+          placeholder={placeholder}
+          value={url} 
+          onChange={(e) => onChange(e.target.value)} 
+          onMouseDown={(e) => e.stopPropagation()}
+          className="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 pr-8 min-w-0" 
+        />
+        <LinkIcon size={12} className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500" />
+      </div>
+      <button
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onClick={() => fileInputRef.current?.click()}
+        className="p-1.5 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg text-zinc-400 transition-colors shrink-0"
+        title="Upload file"
+      >
+        <FileUp size={14} />
+      </button>
+      <input 
+        type="file" 
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        className="hidden" 
+        accept="image/*,video/*" 
+      />
+    </div>
+  );
+};
+
 /**
  * SegmentEditor
  * 
  * A sub-component for editing a single segment within the VisualEditor.
  */
 function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown, moveSegment, removeSegment }: SegmentEditorProps) {
-  const [activeBubble, setActiveBubble] = useState<{ type: 'style' | 'animation' | 'speech' | 'binaural' | 'audio' | 'metronome' | 'pattern' | 'camera' | 'anim_config', isAux?: boolean } | null>(null);
+  const [activeBubble, setActiveBubble] = useState<{ 
+    type: 'style' | 'animation' | 'speech' | 'binaural' | 'audio' | 'metronome' | 'pattern' | 'camera' | 'anim_config' | 'image' | 'video' | 'wordlist', 
+    isAux?: boolean,
+    index?: number
+  } | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const bubbleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (!activeBubble) return;
 
+    // Use native listener on the bubble to stop propagation to document
+    // This is more reliable for preventing handleClickOutside from firing
+    const bubble = bubbleRef.current;
+    const stopPropagation = (e: Event) => {
+      e.stopPropagation();
+    };
+
+    if (bubble) {
+      bubble.addEventListener('mousedown', stopPropagation);
+      bubble.addEventListener('mouseup', stopPropagation);
+      bubble.addEventListener('click', stopPropagation);
+      bubble.addEventListener('focusin', stopPropagation);
+    }
+
     const handleClickOutside = (event: MouseEvent) => {
       if (bubbleRef.current && !bubbleRef.current.contains(event.target as Node)) {
-        // Check if the click was on a button that might be toggling a bubble
-        // to avoid double-toggling issues.
         const target = event.target as HTMLElement;
         const isToggleButton = target.closest('button')?.hasAttribute('data-bubble-toggle');
+        const isInsideEditor = target.closest('.rich-text-editor');
+        const isInsideBubble = target.closest('[data-bubble-container="true"]');
         
-        if (!isToggleButton) {
+        if (!isToggleButton && !isInsideEditor && !isInsideBubble) {
           setActiveBubble(null);
         }
       }
@@ -229,57 +464,84 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
+      if (bubble) {
+        bubble.removeEventListener('mousedown', stopPropagation);
+        bubble.removeEventListener('mouseup', stopPropagation);
+        bubble.removeEventListener('click', stopPropagation);
+        bubble.removeEventListener('focusin', stopPropagation);
+      }
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [activeBubble]);
 
   const parsed = parseSegmentContent(seg.rawMarkdown);
-  const primaryText = parsed.text;
-  const auxText = parsed.auxText || '';
   const media = parsed.media;
 
-  const buildMarkdown = (primary: string, aux: string, mediaList: MediaItem[]) => {
-    const mainMedia = mediaList.filter(m => m.layer === 'main');
-    const auxMedia = mediaList.filter(m => m.layer === 'aux');
-
-    let md = primary.trim();
-    if (mainMedia.length > 0) {
-      md += '\n\n' + mainMedia.map(m => `![${Math.round(m.opacity * 100)}${m.volume !== undefined ? ',' + Math.round(m.volume * 100) : ''}](${m.url})`).join('\n');
-    }
-
-    if (aux.trim() || auxMedia.length > 0) {
-      let auxContent = aux.trim();
-      if (auxMedia.length > 0) {
-        auxContent += '\n\n' + auxMedia.map(m => `![${Math.round(m.opacity * 100)}${m.volume !== undefined ? ',' + Math.round(m.volume * 100) : ''}](${m.url})`).join('\n');
+  const replaceMediaInMarkdown = (markdown: string, mediaIndex: number, newMediaItem: MediaItem | null) => {
+    const mediaRegex = /!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g;
+    let currentIndex = 0;
+    
+    return markdown.replace(mediaRegex, (fullMatch, opacity, volume, url) => {
+      if (currentIndex === mediaIndex) {
+        currentIndex++;
+        if (newMediaItem === null) return '';
+        return `![${Math.round(newMediaItem.opacity * 100)}${newMediaItem.volume !== undefined ? ',' + Math.round(newMediaItem.volume * 100) : ''}](${newMediaItem.url})`;
       }
-      md += '\n\n' + auxContent.split('\n').map(line => `> ${line}`).join('\n');
-    }
-
-    return md;
-  };
-
-  const handlePrimaryTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    updateMarkdown(index, buildMarkdown(e.target.value, auxText, media));
-  };
-
-  const handleAuxTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    updateMarkdown(index, buildMarkdown(primaryText, e.target.value, media));
+      currentIndex++;
+      return fullMatch;
+    });
   };
 
   const handleMediaChange = (mediaIndex: number, field: keyof MediaItem, value: any) => {
     const newMedia = [...media];
     newMedia[mediaIndex] = { ...newMedia[mediaIndex], [field]: value };
-    updateMarkdown(index, buildMarkdown(primaryText, auxText, newMedia));
+    updateMarkdown(index, replaceMediaInMarkdown(seg.rawMarkdown, mediaIndex, newMedia[mediaIndex]));
   };
 
-  const addMedia = () => {
-    const newMedia: MediaItem[] = [...media, { type: 'image', url: '', opacity: 1, layer: 'main' }];
-    updateMarkdown(index, buildMarkdown(primaryText, auxText, newMedia));
+  const addMedia = (type: 'image' | 'video') => {
+    const newStr = type === 'video' ? '![100,100]()' : '![100]()';
+    updateMarkdown(index, seg.rawMarkdown + `\n\n${newStr}`);
   };
 
   const removeMedia = (mediaIndex: number) => {
-    const newMedia = media.filter((_, i) => i !== mediaIndex);
-    updateMarkdown(index, buildMarkdown(primaryText, auxText, newMedia));
+    updateMarkdown(index, replaceMediaInMarkdown(seg.rawMarkdown, mediaIndex, null));
+  };
+
+  const wordlistRegex = /!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g;
+  const wordlists: { interval: number; count: number; words: string }[] = [];
+  let wlMatch;
+  while ((wlMatch = wordlistRegex.exec(seg.rawMarkdown)) !== null) {
+    wordlists.push({
+      interval: parseFloat(wlMatch[1]),
+      count: parseInt(wlMatch[2]),
+      words: wlMatch[3]
+    });
+  }
+
+  const replaceWordlistInMarkdown = (markdown: string, wlIndex: number, newWlItem: { interval: number; count: number; words: string } | null) => {
+    const wlRegex = /!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g;
+    let currentIndex = 0;
+    
+    return markdown.replace(wlRegex, (fullMatch, interval, count, words) => {
+      if (currentIndex === wlIndex) {
+        currentIndex++;
+        if (newWlItem === null) return '';
+        return `!{${newWlItem.interval},${newWlItem.count}}(${newWlItem.words})`;
+      }
+      currentIndex++;
+      return fullMatch;
+    });
+  };
+
+  const handleWordlistChange = (wlIndex: number, field: string, value: any) => {
+    const newWl = [...wordlists];
+    newWl[wlIndex] = { ...newWl[wlIndex], [field]: value };
+    updateMarkdown(index, replaceWordlistInMarkdown(seg.rawMarkdown, wlIndex, newWl[wlIndex]));
+  };
+
+  const removeWordlist = (wlIndex: number) => {
+    updateMarkdown(index, replaceWordlistInMarkdown(seg.rawMarkdown, wlIndex, null));
+    setActiveBubble(null);
   };
 
   const handleTranscribe = async () => {
@@ -313,6 +575,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
           <span className="text-sm font-semibold text-zinc-400 uppercase tracking-wider">Segment {index + 1}</span>
           <div className="flex items-center gap-1">
             <button 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setActiveBubble(activeBubble?.type === 'audio' ? null : { type: 'audio' })}
               data-bubble-toggle="true"
               className={`p-1 rounded transition-colors ${activeBubble?.type === 'audio' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
@@ -321,6 +584,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
               <Volume2 size={12} />
             </button>
             <button 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setActiveBubble(activeBubble?.type === 'binaural' ? null : { type: 'binaural' })}
               data-bubble-toggle="true"
               className={`p-1 rounded transition-colors ${activeBubble?.type === 'binaural' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
@@ -329,6 +593,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
               <Ear size={12} />
             </button>
             <button 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setActiveBubble(activeBubble?.type === 'metronome' ? null : { type: 'metronome' })}
               data-bubble-toggle="true"
               className={`p-1 rounded transition-colors ${activeBubble?.type === 'metronome' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
@@ -337,6 +602,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
               <Timer size={12} />
             </button>
             <button 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={() => setActiveBubble(activeBubble?.type === 'speech' ? null : { type: 'speech' })}
               data-bubble-toggle="true"
               className={`p-1 rounded transition-colors ${activeBubble?.type === 'speech' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
@@ -347,27 +613,19 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
           </div>
         </div>
         <div className="flex gap-1 transition-opacity">
-          <button onClick={() => moveSegment(index, -1)} disabled={index === 0} className="p-1 text-zinc-400 hover:text-white disabled:opacity-30"><ArrowUp size={16}/></button>
-          <button onClick={() => moveSegment(index, 1)} disabled={index === totalSegments - 1} className="p-1 text-zinc-400 hover:text-white disabled:opacity-30"><ArrowDown size={16}/></button>
-          <button onClick={() => removeSegment(index)} className="p-1 text-red-400 hover:text-red-300 ml-2"><Trash2 size={16}/></button>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => moveSegment(index, -1)} disabled={index === 0} className="p-1 text-zinc-400 hover:text-white disabled:opacity-30"><ArrowUp size={16}/></button>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => moveSegment(index, 1)} disabled={index === totalSegments - 1} className="p-1 text-zinc-400 hover:text-white disabled:opacity-30"><ArrowDown size={16}/></button>
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => removeSegment(index)} className="p-1 text-red-400 hover:text-red-300 ml-2"><Trash2 size={16}/></button>
         </div>
       </div>
 
       <div className="flex flex-col gap-2 relative">
         <RichTextEditor 
           markdown={seg.rawMarkdown}
+          readOnly={!!activeBubble}
           onChange={(md) => updateMarkdown(index, md)}
-          onInsertImage={() => {
-            const url = prompt('Enter Image URL:');
-            if (url) updateMarkdown(index, seg.rawMarkdown + `\n\n![100](${url})`);
-          }}
-          onInsertVideo={() => {
-            const url = prompt('Enter Video URL:');
-            if (url) updateMarkdown(index, seg.rawMarkdown + `\n\n![100,100](${url})`);
-          }}
-          onInsertWordlist={() => {
-            updateMarkdown(index, seg.rawMarkdown + `\n\n!{1.0,1}(relax)`);
-          }}
+          onOpenMediaBubble={(type, mediaIndex) => setActiveBubble(activeBubble?.type === type && activeBubble.index === mediaIndex ? null : { type, index: mediaIndex })}
+          onOpenWordlistBubble={(wordlistIndex) => setActiveBubble(activeBubble?.type === 'wordlist' && activeBubble.index === wordlistIndex ? null : { type: 'wordlist', index: wordlistIndex })}
           onOpenPaintbrush={(isAux) => setActiveBubble(activeBubble?.type === 'style' && activeBubble.isAux === isAux ? null : { type: 'style', isAux })}
           onOpenFilm={(isAux) => setActiveBubble(activeBubble?.type === 'animation' && activeBubble.isAux === isAux ? null : { type: 'animation', isAux })}
         />
@@ -375,6 +633,11 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
         {activeBubble && (
           <div 
             ref={bubbleRef}
+            onMouseDown={(e) => e.stopPropagation()}
+            onMouseUp={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            onFocus={(e) => e.stopPropagation()}
+            data-bubble-container="true"
             className="absolute top-12 right-0 z-50 w-80 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200"
           >
             <div className="flex justify-between items-center mb-4">
@@ -387,6 +650,9 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                  activeBubble.type === 'pattern' ? <Orbit size={14} /> :
                  activeBubble.type === 'anim_config' ? <Activity size={14} /> :
                  activeBubble.type === 'camera' ? <Camera size={14} /> :
+                 activeBubble.type === 'image' ? <Image size={14} /> :
+                 activeBubble.type === 'video' ? <Tv size={14} /> :
+                 activeBubble.type === 'wordlist' ? <Sparkles size={14} /> :
                  <Timer size={14} />}
                 {activeBubble.isAux !== undefined ? (activeBubble.isAux ? 'Aux ' : 'Text ') : ''}
                 {activeBubble.type === 'style' ? 'Style' : 
@@ -397,9 +663,19 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                  activeBubble.type === 'pattern' ? 'Pattern' :
                  activeBubble.type === 'anim_config' ? 'Anim Config' :
                  activeBubble.type === 'camera' ? 'Camera' :
+                 activeBubble.type === 'image' ? 'Image' :
+                 activeBubble.type === 'video' ? 'Video' :
+                 activeBubble.type === 'wordlist' ? 'Wordlist' :
                  'Metronome'}
               </h4>
-              <button onClick={() => setActiveBubble(null)} className="p-1 text-zinc-500 hover:text-white transition-colors">
+              <button 
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                }} 
+                onClick={() => setActiveBubble(null)} 
+                className="p-1 text-zinc-500 hover:text-white transition-colors"
+              >
                 <X size={14} />
               </button>
             </div>
@@ -412,6 +688,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                     <select 
                       value={(activeBubble.isAux ? seg.config.auxFont : seg.config.textFont) || 'sans-serif'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxFont' : 'textFont', e.target.value)} 
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     >
                       <option value="sans-serif">Sans-Serif</option>
@@ -438,6 +715,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                     <select 
                       value={(activeBubble.isAux ? seg.config.auxOutlineType : seg.config.textOutlineType) || 'none'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxOutlineType' : 'textOutlineType', e.target.value)} 
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     >
                       <option value="none">None</option>
@@ -451,6 +729,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                       type="color" 
                       value={(activeBubble.isAux ? seg.config.auxColor : seg.config.textColor) || '#ffffff'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxColor' : 'textColor', e.target.value)} 
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-1 py-0.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 h-8 w-full" 
                     />
                   </div>
@@ -459,6 +738,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                     <select 
                       value={(activeBubble.isAux ? seg.config.auxShading : seg.config.textShading) ? 'true' : 'false'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxShading' : 'textShading', e.target.value === 'true')} 
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     >
                       <option value="false">Off</option>
@@ -470,6 +750,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                     <select 
                       value={(activeBubble.isAux ? seg.config.auxBackdrop : seg.config.textBackdrop) ? 'true' : 'false'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxBackdrop' : 'textBackdrop', e.target.value === 'true')} 
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     >
                       <option value="false">Off</option>
@@ -482,6 +763,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                       <select 
                         value={seg.config.textDisplayPattern || 'center'} 
                         onChange={(e) => updateConfig(index, 'textDisplayPattern', e.target.value)} 
+                        onMouseDown={(e) => e.stopPropagation()}
                         className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                       >
                         <option value="center">Center</option>
@@ -500,6 +782,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                     <select 
                       value={(activeBubble.isAux ? seg.config.auxAnimType : seg.config.textAnimType) || 'none'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxAnimType' : 'textAnimType', e.target.value)} 
+                      onMouseDown={(e) => e.stopPropagation()}
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
                     >
                       <option value="none">None</option>
@@ -528,14 +811,14 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Enable Speech Synthesis</label>
-                    <select value={seg.config.speech_synth ? 'true' : 'false'} onChange={(e) => updateConfig(index, 'speech_synth', e.target.value === 'true')} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <select value={seg.config.speech_synth ? 'true' : 'false'} onChange={(e) => updateConfig(index, 'speech_synth', e.target.value === 'true')} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
                       <option value="false">Off</option>
                       <option value="true">On</option>
                     </select>
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Voice</label>
-                    <input type="text" value={seg.config.speech_voice || 'af_heart'} onChange={(e) => updateConfig(index, 'speech_voice', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    <input type="text" value={seg.config.speech_voice || 'af_heart'} onChange={(e) => updateConfig(index, 'speech_voice', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                   </div>
                   <div className="col-span-2">
                     <SliderInput
@@ -552,7 +835,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Binaural Mode</label>
-                    <select value={seg.config.binaural} onChange={(e) => updateConfig(index, 'binaural', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <select value={seg.config.binaural} onChange={(e) => updateConfig(index, 'binaural', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
                       <option value="off">Off</option>
                       <option value="focus">Focus</option>
                       <option value="relax">Relax</option>
@@ -601,10 +884,12 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                         placeholder="https://..."
                         value={seg.config.audioUrl || ''} 
                         onChange={(e) => updateConfig(index, 'audioUrl', e.target.value)} 
+                        onMouseDown={(e) => e.stopPropagation()}
                         className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0" 
                       />
                       <button
                         onClick={handleTranscribe}
+                        onMouseDown={(e) => e.stopPropagation()}
                         disabled={!seg.config.audioUrl || isTranscribing}
                         className="p-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 border border-zinc-700 rounded-lg text-emerald-400 transition-colors"
                       >
@@ -613,7 +898,10 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                     </div>
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
-                    <label className="flex items-center justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg cursor-pointer transition-colors text-zinc-300 text-xs gap-2">
+                    <label 
+                      onMouseDown={(e) => e.stopPropagation()}
+                      className="flex items-center justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg cursor-pointer transition-colors text-zinc-300 text-xs gap-2"
+                    >
                       <Upload size={14} />
                       Upload File
                       <input 
@@ -635,7 +923,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern</label>
-                    <select value={seg.config.pattern} onChange={(e) => updateConfig(index, 'pattern', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <select value={seg.config.pattern} onChange={(e) => updateConfig(index, 'pattern', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
                       <option value="spiral">Spiral</option>
                       <option value="tunnel">Tunnel</option>
                       <option value="rings">Rings</option>
@@ -648,7 +936,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern Type</label>
-                    <select value={seg.config.patternType || 'default'} onChange={(e) => updateConfig(index, 'patternType', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <select value={seg.config.patternType || 'default'} onChange={(e) => updateConfig(index, 'patternType', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
                       <option value="default">Default</option>
                       <option value="double">Double (Spiral)</option>
                       <option value="galaxy">Galaxy (Spiral)</option>
@@ -663,7 +951,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Face Camera</label>
-                    <select value={seg.config.patternFaceCamera === undefined ? 'true' : (seg.config.patternFaceCamera ? 'true' : 'false')} onChange={(e) => updateConfig(index, 'patternFaceCamera', e.target.value === 'true')} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <select value={seg.config.patternFaceCamera === undefined ? 'true' : (seg.config.patternFaceCamera ? 'true' : 'false')} onChange={(e) => updateConfig(index, 'patternFaceCamera', e.target.value === 'true')} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
                       <option value="false">Off</option>
                       <option value="true">On</option>
                     </select>
@@ -704,15 +992,15 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 1</label>
                     <div className="flex gap-2">
-                      <input type="color" value={seg.config.patternColor1 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
-                      <input type="text" value={seg.config.patternColor1 || ''} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
+                      <input type="color" value={seg.config.patternColor1 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
+                      <input type="text" value={seg.config.patternColor1 || ''} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
                     </div>
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 2</label>
                     <div className="flex gap-2">
-                      <input type="color" value={seg.config.patternColor2 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
-                      <input type="text" value={seg.config.patternColor2 || ''} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
+                      <input type="color" value={seg.config.patternColor2 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
+                      <input type="text" value={seg.config.patternColor2 || ''} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
                     </div>
                   </div>
                 </>
@@ -720,7 +1008,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Camera Mode</label>
-                    <select value={seg.config.camera} onChange={(e) => updateConfig(index, 'camera', e.target.value)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <select value={seg.config.camera} onChange={(e) => updateConfig(index, 'camera', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
                       <option value="static">Static</option>
                       <option value="orbit">Orbit</option>
                       <option value="fly">Fly</option>
@@ -739,69 +1027,124 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                   </div>
                   <div className="flex flex-col gap-1 col-span-1">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Radius</label>
-                    <input type="number" step="0.5" value={seg.config.cameraRadius ?? ''} onChange={(e) => updateConfig(index, 'cameraRadius', parseFloat(e.target.value) || undefined)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
+                    <input type="number" step="0.5" value={seg.config.cameraRadius ?? ''} onChange={(e) => updateConfig(index, 'cameraRadius', parseFloat(e.target.value) || undefined)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
                   </div>
                   <div className="flex flex-col gap-1 col-span-1">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Height</label>
-                    <input type="number" step="0.1" value={seg.config.cameraHeight ?? ''} onChange={(e) => updateConfig(index, 'cameraHeight', parseFloat(e.target.value) || undefined)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
+                    <input type="number" step="0.1" value={seg.config.cameraHeight ?? ''} onChange={(e) => updateConfig(index, 'cameraHeight', parseFloat(e.target.value) || undefined)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
                   </div>
                   <div className="flex flex-col gap-1 col-span-1">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Target X</label>
-                    <input type="number" step="0.5" value={seg.config.cameraTargetX ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetX', parseFloat(e.target.value) || 0)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    <input type="number" step="0.5" value={seg.config.cameraTargetX ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetX', parseFloat(e.target.value) || 0)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                   </div>
                   <div className="flex flex-col gap-1 col-span-1">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Target Y</label>
-                    <input type="number" step="0.5" value={seg.config.cameraTargetY ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetY', parseFloat(e.target.value) || 0)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    <input type="number" step="0.5" value={seg.config.cameraTargetY ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetY', parseFloat(e.target.value) || 0)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                   </div>
                   <div className="flex flex-col gap-1 col-span-1">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Target Z</label>
-                    <input type="number" step="0.5" value={seg.config.cameraTargetZ ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetZ', parseFloat(e.target.value) || 0)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    <input type="number" step="0.5" value={seg.config.cameraTargetZ ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetZ', parseFloat(e.target.value) || 0)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
                   </div>
                   <div className="flex flex-col gap-1 col-span-1">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">FOV</label>
-                    <input type="number" step="0.1" value={seg.config.cameraFov ?? ''} onChange={(e) => updateConfig(index, 'cameraFov', parseFloat(e.target.value) || undefined)} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
+                    <input type="number" step="0.1" value={seg.config.cameraFov ?? ''} onChange={(e) => updateConfig(index, 'cameraFov', parseFloat(e.target.value) || undefined)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
                   </div>
                 </>
-              ) : activeBubble.type === 'audio' ? (
-                <>
-                  <div className="flex flex-col gap-1 col-span-2">
-                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Audio URL</label>
-                    <div className="flex gap-2">
-                      <input 
-                        type="text" 
-                        placeholder="https://..."
-                        value={seg.config.audioUrl || ''} 
-                        onChange={(e) => updateConfig(index, 'audioUrl', e.target.value)} 
-                        className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 min-w-0" 
-                      />
-                      <button
-                        onClick={handleTranscribe}
-                        disabled={!seg.config.audioUrl || isTranscribing}
-                        className="p-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 border border-zinc-700 rounded-lg text-emerald-400 transition-colors"
-                      >
-                        {isTranscribing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1 col-span-2">
-                    <label className="flex items-center justify-center px-3 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg cursor-pointer transition-colors text-zinc-300 text-xs gap-2">
-                      <Upload size={14} />
-                      Upload File
-                      <input 
-                        type="file" 
-                        accept="audio/*,video/*" 
-                        className="hidden" 
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const url = URL.createObjectURL(file);
-                            updateConfig(index, 'audioUrl', url);
-                          }
-                        }} 
-                      />
-                    </label>
-                  </div>
-                </>
+              ) : (activeBubble.type === 'image' || activeBubble.type === 'video') ? (
+                <div className="col-span-2 flex flex-col gap-3">
+                  {(() => {
+                    const m = media[activeBubble.index ?? 0];
+                    if (!m) return <div className="text-zinc-500 text-xs italic">Item not found</div>;
+                    return (
+                      <>
+                        <CompactUrlPicker 
+                          url={m.url} 
+                          autoFocus
+                          onChange={(url) => handleMediaChange(activeBubble.index ?? 0, 'url', url)} 
+                          placeholder={`${activeBubble.type === 'image' ? 'Image' : 'Video'} URL`}
+                        />
+                        <SliderInput label="Opacity" value={m.opacity} min={0} max={1} step={0.1} onChange={(val) => handleMediaChange(activeBubble.index ?? 0, 'opacity', val)} />
+                        {m.type === 'video' && (
+                          <SliderInput label="Volume" value={m.volume ?? 1} min={0} max={1} step={0.1} onChange={(val) => handleMediaChange(activeBubble.index ?? 0, 'volume', val)} />
+                        )}
+                        <button 
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }}
+                          onClick={() => {
+                            removeMedia(activeBubble.index ?? 0);
+                            setActiveBubble(null);
+                          }} 
+                          className="mt-2 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded text-xs flex items-center justify-center gap-1"
+                        >
+                          <Trash2 size={12}/> Remove {activeBubble.type === 'image' ? 'Image' : 'Video'}
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
+              ) : activeBubble.type === 'wordlist' ? (
+                <div className="col-span-2 flex flex-col gap-3">
+                  {(() => {
+                    const wl = wordlists[activeBubble.index ?? 0];
+                    if (!wl) return <div className="text-zinc-500 text-xs italic">Item not found</div>;
+                    return (
+                      <>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] text-zinc-500 uppercase font-bold">Predefined Lists</label>
+                          <select 
+                            className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onChange={(e) => {
+                              const keyword = e.target.value;
+                              if (keyword) {
+                                handleWordlistChange(activeBubble.index ?? 0, 'words', keyword);
+                              }
+                            }}
+                            value={PREBUILT_WORDLISTS[wl.words.toLowerCase()] ? wl.words.toLowerCase() : ''}
+                          >
+                            <option value="">Custom / Select...</option>
+                            {Object.keys(PREBUILT_WORDLISTS).map(name => (
+                              <option key={name} value={name}>{name.charAt(0).toUpperCase() + name.slice(1)}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] text-zinc-500 uppercase font-bold">Words (comma separated)</label>
+                          <input 
+                            type="text" 
+                            autoFocus
+                            value={wl.words} 
+                            onChange={(e) => handleWordlistChange(activeBubble.index ?? 0, 'words', e.target.value)} 
+                            onMouseDown={(e) => e.stopPropagation()}
+                            className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" 
+                            placeholder="relax,breathe,focus" 
+                          />
+                          {PREBUILT_WORDLISTS[wl.words.toLowerCase()] ? (
+                            <div className="mt-1 p-2 bg-zinc-950/50 border border-zinc-800/50 rounded text-[9px] text-emerald-400/80 leading-relaxed max-h-20 overflow-y-auto">
+                              <strong>Expanded:</strong> {PREBUILT_WORDLISTS[wl.words.toLowerCase()].join(', ')}
+                            </div>
+                          ) : (
+                            <p className="text-[9px] text-zinc-500 italic mt-0.5">Tip: You can also paste a URL to a CSV file here.</p>
+                          )}
+                        </div>
+                        <SliderInput label="Interval (s)" value={wl.interval} min={0.1} max={5} step={0.1} onChange={(val) => handleWordlistChange(activeBubble.index ?? 0, 'interval', val)} />
+                        <SliderInput label="Count (words at once)" value={wl.count} min={1} max={10} step={1} onChange={(val) => handleWordlistChange(activeBubble.index ?? 0, 'count', val)} />
+                        <button 
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                          }} 
+                          onClick={() => removeWordlist(activeBubble.index ?? 0)} 
+                          className="mt-2 py-1.5 bg-red-900/30 hover:bg-red-900/50 text-red-400 rounded text-xs flex items-center justify-center gap-1"
+                        >
+                          <Trash2 size={12}/> Remove Wordlist
+                        </button>
+                      </>
+                    );
+                  })()}
+                </div>
               ) : (
                 <div className="col-span-2">
                   <SliderInput
@@ -849,6 +1192,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
 
       <div className="grid grid-cols-3 gap-2 mt-1">
         <button 
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => setActiveBubble(activeBubble?.type === 'pattern' ? null : { type: 'pattern' })}
           data-bubble-toggle="true"
           className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-wider ${activeBubble?.type === 'pattern' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'text-zinc-400 bg-zinc-900/50 border-zinc-800 hover:text-white hover:bg-zinc-900 hover:border-zinc-700'}`}
@@ -858,6 +1202,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
           Pattern
         </button>
         <button 
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => setActiveBubble(activeBubble?.type === 'anim_config' ? null : { type: 'anim_config' })}
           data-bubble-toggle="true"
           className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-wider ${activeBubble?.type === 'anim_config' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'text-zinc-400 bg-zinc-900/50 border-zinc-800 hover:text-white hover:bg-zinc-900 hover:border-zinc-700'}`}
@@ -867,6 +1212,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
           Animation
         </button>
         <button 
+          onMouseDown={(e) => e.preventDefault()}
           onClick={() => setActiveBubble(activeBubble?.type === 'camera' ? null : { type: 'camera' })}
           data-bubble-toggle="true"
           className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border transition-all text-[10px] font-bold uppercase tracking-wider ${activeBubble?.type === 'camera' ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/50 shadow-[0_0_10px_rgba(16,185,129,0.1)]' : 'text-zinc-400 bg-zinc-900/50 border-zinc-800 hover:text-white hover:bg-zinc-900 hover:border-zinc-700'}`}

@@ -14,6 +14,6 @@
       }
     },
     "media": "![opacity,volume](url) - opacity 0-100, volume 0-100 (optional)",
-    "wordList": "!{interval,pattern}(list,of,words) - interval in seconds, pattern name"
+    "wordList": "!{interval,count}(list,of,words) or !{interval,count}(url_to_csv) - interval in seconds, count of words to display at once"
   }
 }

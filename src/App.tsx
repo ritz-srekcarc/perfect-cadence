@@ -1,11 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Square, Edit3, Eye, Settings, Share2, HelpCircle, X, Ear, Loader2 } from 'lucide-react';
+import { Play, Square, Edit3, Eye, Settings, Share2, HelpCircle, X, Ear, Loader2, Download } from 'lucide-react';
 import { KokoroTTS } from 'kokoro-js';
 import { env } from '@huggingface/transformers';
-import Editor from 'react-simple-code-editor';
-import Prism from 'prismjs';
-import 'prismjs/components/prism-markdown';
-import 'prismjs/themes/prism-tomorrow.css';
+import { MarkdownEditor } from './components/MarkdownEditor';
 import { SceneManager } from './SceneManager';
 import { audioEngine } from './audioEngine';
 import { DEFAULT_MARKDOWN, parseTimeline, serializeTimeline, unminifyMarkdown, TimelineSegment } from './timelineParser';
@@ -73,6 +70,8 @@ export default function App() {
   const [isDragging, setIsDragging] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isPWA, setIsPWA] = useState(false);
 
   // External Services and Security State
   const [kokoro, setKokoro] = useState<any>(null);
@@ -89,8 +88,39 @@ export default function App() {
       setIsMobile(window.innerWidth < 768);
     };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const handleAppInstalled = () => {
+      setDeferredPrompt(null);
+      setIsPWA(true);
+    };
+
+    if (window.matchMedia('(display-mode: standalone)').matches || (window.navigator as any).standalone) {
+      setIsPWA(true);
+    }
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+      window.removeEventListener('appinstalled', handleAppInstalled);
+    };
   }, []);
+
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
+    }
+  };
 
   /**
    * Mouse handlers for draggable sidebar
@@ -638,10 +668,19 @@ camera: orbit
             <SpiralLogo size={18} />
             <h1 className="text-lg font-cursive text-emerald-400">Perfect Cadence</h1>
           </div>
-          <div className="flex gap-2">
+            <div className="flex gap-2">
             {isMobile && (
               <button onClick={() => setMode('view')} className="p-2 text-zinc-400 hover:text-white" aria-label="Close edit mode">
                 <X size={20} />
+              </button>
+            )}
+            {!isPWA && deferredPrompt && (
+              <button 
+                onClick={handleInstallClick}
+                className="p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
+                aria-label="Install App"
+              >
+                <Download size={16} /> <span className="hidden lg:inline">Install App</span>
               </button>
             )}
             <button 
@@ -705,18 +744,10 @@ camera: orbit
           <div className="flex-1 overflow-auto relative">
             {activeTab === 'markdown' ? (
               <div className="absolute inset-0 p-4">
-                <div className="w-full h-full bg-zinc-950 border border-zinc-800 rounded-xl overflow-auto text-sm font-mono text-zinc-300 focus-within:ring-2 focus-within:ring-emerald-500/50">
-                  <Editor
+                <div className="w-full h-full bg-zinc-950 border border-zinc-800 rounded-xl overflow-hidden focus-within:ring-2 focus-within:ring-emerald-500/50">
+                  <MarkdownEditor
                     value={markdown}
-                    onValueChange={code => setMarkdown(code)}
-                    highlight={code => Prism.highlight(code, Prism.languages.markdown, 'markdown')}
-                    padding={16}
-                    style={{
-                      fontFamily: '"JetBrains Mono", "Fira Code", monospace',
-                      fontSize: 14,
-                      minHeight: '100%'
-                    }}
-                    textareaClassName="focus:outline-none"
+                    onChange={(code) => setMarkdown(code)}
                   />
                 </div>
               </div>
@@ -757,6 +788,16 @@ camera: orbit
             <div className="flex gap-2 ml-auto">
               {!isPlaying && (
                 <>
+                  {!isPWA && deferredPrompt && (
+                    <button 
+                      onClick={handleInstallClick}
+                      className="p-2 rounded-lg bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
+                      title="Install App"
+                      aria-label="Install App"
+                    >
+                      <Download size={16} /> <span className="hidden lg:inline">Install App</span>
+                    </button>
+                  )}
                   <button 
                     onClick={handleShare}
                     className="tutorial-share-btn p-2 rounded-lg bg-zinc-800/80 text-zinc-300 hover:bg-zinc-700 backdrop-blur-sm transition-colors flex items-center gap-2 text-sm"
@@ -1100,12 +1141,16 @@ metronome: 60
               <li><strong className="text-zinc-200">audioUrl:</strong> URL to custom audio or video file (string). You can also drag and drop an audio or video file onto the window.</li>
             </ul>
 
+            <h3 className="text-zinc-100 mt-6">Interactive Editor</h3>
+            <p className="text-zinc-400">The visual editor automatically converts your media and wordlist syntax into interactive <span className="text-emerald-400 font-semibold">Microcards</span>. You can click these cards to open a configuration bubble where you can adjust settings like opacity, volume, and wordlists directly.</p>
+            
             <h3 className="text-zinc-100 mt-6">Wordlists</h3>
             <p className="text-zinc-400">Display a sequence of words: <code>!{`{interval,count}(word1,word2)`}</code></p>
             <ul className="text-zinc-400 space-y-2">
               <li><strong className="text-zinc-200">interval:</strong> Seconds per word update</li>
               <li><strong className="text-zinc-200">count:</strong> Number of words to display at once</li>
               <li><strong className="text-zinc-200">Pre-built lists:</strong> Use a single word to load a list: <code>relax</code>, <code>focus</code>, <code>sleep</code>, <code>confidence</code>, <code>energy</code>. Example: <code>!{`{3,4}(relax)`}</code></li>
+              <li><strong className="text-zinc-200">CSV URLs:</strong> Load words from a remote CSV file: <code>!{`{2,3}(https://example.com/words.csv)`}</code></li>
             </ul>
 
             <h3 className="text-zinc-100 mt-6">Images & Videos</h3>

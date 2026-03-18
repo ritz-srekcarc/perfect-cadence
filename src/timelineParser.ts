@@ -83,7 +83,8 @@ export const PREBUILT_WORDLISTS: Record<string, string[]> = {
   focus: ["attention", "concentrate", "sharp", "clear", "mind", "center", "now", "here", "present", "aware", "alert", "awake", "steady", "gaze", "fix", "point", "direct", "guide", "flow", "zone"],
   sleep: ["drowsy", "tired", "slumber", "dream", "night", "dark", "soft", "bed", "pillow", "blanket", "snug", "cozy", "yawn", "nod", "doze", "nap", "snooze", "restful", "deepen", "fade"],
   confidence: ["strong", "power", "bold", "brave", "sure", "certain", "proud", "tall", "stand", "speak", "voice", "clear", "loud", "firm", "solid", "rock", "base", "root", "grow", "shine"],
-  energy: ["wake", "rise", "sun", "light", "bright", "spark", "fire", "heat", "move", "act", "do", "go", "fast", "quick", "speed", "rush", "surge", "pulse", "beat", "alive"]
+  energy: ["wake", "rise", "sun", "light", "bright", "spark", "fire", "heat", "move", "act", "do", "go", "fast", "quick", "speed", "rush", "surge", "pulse", "beat", "alive"],
+  gratitude: ["gratitude", "thanks", "blessing", "love", "kindness", "joy", "heart", "open", "appreciate", "value", "gift", "grace", "warmth", "smile", "peace", "full", "enough", "content", "blessed", "share"]
 };
 
 export interface TimelineSegment {
@@ -230,7 +231,7 @@ export function parseSegmentContent(rawMarkdown: string) {
   text = text.replace(/^>\s*.*$/gm, '').trim();
 
   // Parse media regex
-  const mediaRegex = /!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g;
+  const mediaRegex = /!\[\s*(\d+)\s*(?:,\s*(\d+)\s*)?\]\((.*?)\)/g;
 
   // Parse media in main text
   let match;
@@ -263,8 +264,35 @@ export function parseSegmentContent(rawMarkdown: string) {
     }
   }
 
-  // We no longer strip wordlists here, they are parsed by markdownRenderer
-  return { text: text.trim(), auxText, media, wordList: undefined };
+  // Parse wordlist
+  const wordlistRegex = /!\{\s*([\d.]+)\s*,\s*(\d+)\s*\}\(([^)]+)\)/g;
+  let wordList: WordList | undefined = undefined;
+  
+  // Check main text first
+  let wlMatch = wordlistRegex.exec(text);
+  if (wlMatch) {
+    wordList = {
+      interval: parseFloat(wlMatch[1]),
+      count: parseInt(wlMatch[2]),
+      words: wlMatch[3].split(',').map(w => w.trim()),
+      layer: 'main'
+    };
+    text = text.replace(wlMatch[0], '');
+  } else if (auxText) {
+    // Check aux text if not in main
+    wlMatch = wordlistRegex.exec(auxText);
+    if (wlMatch) {
+      wordList = {
+        interval: parseFloat(wlMatch[1]),
+        count: parseInt(wlMatch[2]),
+        words: wlMatch[3].split(',').map(w => w.trim()),
+        layer: 'aux'
+      };
+      auxText = auxText.replace(wlMatch[0], '');
+    }
+  }
+
+  return { text: text.trim(), auxText, media, wordList };
 }
 
 
@@ -324,7 +352,7 @@ export const SYNTAX_DOCS = {
     speech_speed: "number"
   },
   media: "![opacity,volume](url) - opacity 0-100, volume 0-100 (optional)",
-  wordList: "!{interval,count}(list,of,words) - interval in seconds, count of words to display at once"
+  wordList: "!{interval,count}(list,of,words) or !{interval,count}(url_to_csv) - interval in seconds, count of words to display at once"
 };
 
 /**

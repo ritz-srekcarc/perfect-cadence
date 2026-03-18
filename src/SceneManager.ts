@@ -1,4 +1,4 @@
-import { Engine, Scene, Vector3, HemisphericLight, ArcRotateCamera, MeshBuilder, Mesh, StandardMaterial, Color3, Texture, DynamicTexture, WebXRDefaultExperience, WebXRState, SceneLoader, TransformNode, ParticleSystem, ShaderMaterial, Effect, VertexBuffer, VideoTexture, WebXRSessionManager } from '@babylonjs/core';
+import { Engine, Scene, Vector3, HemisphericLight, ArcRotateCamera, MeshBuilder, Mesh, StandardMaterial, Color3, Texture, DynamicTexture, WebXRDefaultExperience, WebXRState, SceneLoader, TransformNode, ParticleSystem, ShaderMaterial, Effect, VertexBuffer, VideoTexture, WebXRSessionManager, SixDofDragBehavior } from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import { SegmentConfig, MediaItem } from './timelineParser';
 import { parseMarkdownText } from './markdownRenderer';
@@ -44,6 +44,7 @@ export class SceneManager {
   private auxTextControls: GUI.Control[] = [];
   private mediaControls: GUI.Image[] = [];
   private mediaMeshes: any[] = [];
+  private wordListCache: Record<string, string[]> = {};
   private time: number = 0;
   private segmentDuration: number = 0;
   private currentConfig: SegmentConfig | null = null;
@@ -139,17 +140,42 @@ export class SceneManager {
   private setupXRUI() {
     if (!this.xr) return;
 
-    // Create a floating UI panel in front of the user
+    // Create a floating UI panel
     const panel = MeshBuilder.CreatePlane("xrUI", { width: 5, height: 4 }, this.scene);
     
-    // Position it in front of the camera
+    // Create a repositioning handle
+    const handle = MeshBuilder.CreateBox("xrUIHandle", { width: 5, height: 0.2, depth: 0.2 }, this.scene);
+    const handleMat = new StandardMaterial("handleMat", this.scene);
+    handleMat.diffuseColor = new Color3(0.3, 0.3, 0.3);
+    handleMat.emissiveColor = new Color3(0.1, 0.1, 0.1);
+    handle.material = handleMat;
+    
+    // Position panel relative to handle
+    panel.parent = handle;
+    panel.position.y = 2.1;
+    
+    // Add drag behavior to the handle, and disable dragging on its children (the panel)
+    const dragBehavior = new SixDofDragBehavior();
+    dragBehavior.draggableMeshes = [];
+    handle.addBehavior(dragBehavior);
+    
+    // Position the handle on the floor facing upwards
     const camera = this.xr.baseExperience.camera;
     const forward = camera.getForwardRay().direction;
-    panel.position = camera.position.add(forward.scale(4));
-    panel.lookAt(camera.position);
-    panel.rotate(Vector3.Up(), Math.PI);
+    forward.y = 0;
+    if (forward.lengthSquared() === 0) {
+        forward.z = 1;
+    }
+    forward.normalize();
     
-    this.xrUIPanel = panel;
+    // Spawn on the floor (y = 0.1 to avoid z-fighting), 2 units in front
+    handle.position = new Vector3(camera.position.x + forward.x * 2, 0.1, camera.position.z + forward.z * 2);
+    
+    // Face upwards
+    handle.rotation.y = Math.atan2(forward.x, forward.z);
+    handle.rotation.x = -Math.PI / 2;
+    
+    this.xrUIPanel = handle;
 
     this.xrUITexture = GUI.AdvancedDynamicTexture.CreateForMesh(panel, 1024, 800);
     
@@ -329,6 +355,40 @@ export class SceneManager {
     this.auxTextTexture.addControl(this.auxTextBackground);
   }
 
+  private async fetchWordList(url: string) {
+    if (this.wordListCache[url]) return this.wordListCache[url];
+    try {
+      const response = await fetch(url);
+      const text = await response.text();
+      // Simple CSV parsing: split by comma or newline
+      const words = text.split(/[,\n\r]+/).map(w => w.trim()).filter(w => w.length > 0);
+      this.wordListCache[url] = words;
+      return words;
+    } catch (e) {
+      console.error("Failed to fetch wordlist:", e);
+      return [];
+    }
+  }
+
+  private triggerWordListFetches(controls: GUI.Control[]) {
+    const traverse = (c: GUI.Control) => {
+      const wlConfig = (c as any).wordListConfig;
+      if (wlConfig && wlConfig.url) {
+        this.fetchWordList(wlConfig.url).then(words => {
+          if (words.length > 0) {
+            wlConfig.words = words;
+            // Force update if it's currently displaying
+            (c as any).wordListPeriod = -1; 
+          }
+        });
+      }
+      if (c instanceof GUI.Container) {
+        c.children.forEach(traverse);
+      }
+    };
+    controls.forEach(traverse);
+  }
+
   public updateText(text: string, auxText?: string) {
     if (!this.textBackground || !this.auxTextBackground) return;
 
@@ -403,6 +463,9 @@ export class SceneManager {
     } else {
       this.auxTextPlane.isVisible = false;
     }
+
+    // Trigger wordlist fetches
+    this.triggerWordListFetches([...this.textControls, ...this.auxTextControls]);
   }
 
   public updateMedia(media: MediaItem[]) {
