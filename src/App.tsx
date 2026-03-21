@@ -198,12 +198,9 @@ export default function App() {
         // Configure transformers to use browser cache
         env.useBrowserCache = true;
         
-        // NOTE: If you encounter "unauthorized access to huggingface" errors, 
-        // you may need to host the model files locally.
-        // 1. Download model files from https://huggingface.co/hexgrad/kokoro-onnx
-        // 2. Place them in public/models/kokoro/
-        // 3. Change the path below to './models/kokoro/'
-        const k = await KokoroTTS.from_pretrained('hexgrad/kokoro-onnx', { dtype: 'fp32' });
+        // Use the public community model (this fixes the 401 error!)
+        const model_id = 'onnx-community/Kokoro-82M-v1.0-ONNX';
+        const k = await KokoroTTS.from_pretrained(model_id, { dtype: 'fp32' });
         setKokoro(k);
       } catch (e) {
         console.error("Failed to initialize Kokoro", e);
@@ -271,10 +268,10 @@ export default function App() {
   const DEMOS = {
     DEFAULT: DEFAULT_MARKDOWN,
     DEMO: DEMO_MARKDOWN,
-    FOCUS: "# Deep Focus\nFocus your mind on the center.\n\n```config\nduration: 30\npattern: spiral\npatternType: hypnotic\npatternSpeed: 0.5\npatternColor1: #000000\npatternColor2: #00ff88\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: focus\nmetronome: 0\n```",
-    COSMOS: "# Cosmic Journey\nDrifting through the stars.\n\n```config\nduration: 45\npattern: particles\npatternType: galaxy\npatternSpeed: 0.2\ncamera: orbit\ncameraSpeed: 0.1\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: sleep\n```",
-    GEOMETRY: "# Sacred Geometry\nThe patterns of the universe.\n\n```config\nduration: 40\npattern: mandala\npatternType: sacred_geometry\npatternComplexity: 10\npatternColor1: #ff00ff\npatternColor2: #00ffff\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: relax\n```",
-    ENERGY: "# Energy Pulse\nFeel the rhythm.\n\n```config\nduration: 20\npattern: pulse\npatternType: vortex\npatternSpeed: 2.0\nmetronome: 120\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: focus\n```"
+    FOCUS: "# Deep Focus\nFocus your mind on the center.\n\n```config\nduration: 30\npatternType: fascinator\npattern: flat spiral\npatternSpeed: 0.5\npatternColor1: #000000\npatternColor2: #00ff88\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: focus\nmetronome: 0\n```",
+    COSMOS: "# Cosmic Journey\nDrifting through the stars.\n\n```config\nduration: 45\npatternType: cluster\npattern: galaxy\npatternSpeed: 0.2\ncamera: orbit\ncameraSpeed: 0.1\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: sleep\n```",
+    GEOMETRY: "# Sacred Geometry\nThe patterns of the universe.\n\n```config\nduration: 40\npatternType: fascinator\npattern: mandala\npatternComplexity: 10\npatternColor1: #ff00ff\npatternColor2: #00ffff\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: relax\n```",
+    ENERGY: "# Energy Pulse\nFeel the rhythm.\n\n```config\nduration: 20\npatternType: repetition\npattern: pulse\npatternSpeed: 2.0\nmetronome: 120\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: focus\n```"
   };
 
   // Pre-calculate encoded demos for highlighting and links
@@ -666,7 +663,7 @@ camera: orbit
         <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
           <div className="flex items-center gap-2">
             <SpiralLogo size={18} />
-            <h1 className="text-lg font-cursive text-emerald-400">Perfect Cadence</h1>
+            <h1 className="text-lg font-cursive text-emerald-400 whitespace-nowrap">Perfect Cadence</h1>
           </div>
             <div className="flex gap-2">
             {isMobile && (
@@ -680,7 +677,7 @@ camera: orbit
                 className="p-2 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30"
                 aria-label="Install App"
               >
-                <Download size={16} /> <span className="hidden lg:inline">Install App</span>
+                <Download size={16} /> <span className="hidden xl:inline">Install App</span>
               </button>
             )}
             <button 
@@ -775,7 +772,7 @@ camera: orbit
             <div className="flex justify-between items-center w-full gap-4">
               <div className="flex items-center gap-2">
                 <SpiralLogo size={20} />
-                <h1 className="text-lg font-cursive text-emerald-400 drop-shadow-md">Perfect Cadence</h1>
+                <h1 className="text-lg font-cursive text-emerald-400 drop-shadow-md whitespace-nowrap">Perfect Cadence</h1>
               </div>
               
             {/* Pill Menu (Horizontal on desktop/landscape) */}
@@ -795,7 +792,7 @@ camera: orbit
                       title="Install App"
                       aria-label="Install App"
                     >
-                      <Download size={16} /> <span className="hidden lg:inline">Install App</span>
+                      <Download size={16} /> <span className="hidden xl:inline">Install App</span>
                     </button>
                   )}
                   <button 
@@ -1108,8 +1105,8 @@ metronome: 60
             <h3 className="text-zinc-100 mt-6">Options</h3>
             <ul className="text-zinc-400 space-y-2">
               <li><strong className="text-zinc-200">duration:</strong> Seconds (number)</li>
-              <li><strong className="text-zinc-200">pattern:</strong> <code>spiral</code>, <code>tunnel</code>, <code>rings</code>, <code>particles</code>, <code>mandala</code>, <code>kaleidoscope</code>, <code>waves</code>, <code>pulse</code></li>
-              <li><strong className="text-zinc-200">patternType:</strong> <code>default</code>, <code>double</code>, <code>galaxy</code>, <code>sphere</code>, <code>cylinder</code>, <code>hypnotic</code>, <code>breathing</code>, <code>infinite</code>, <code>vortex</code>, <code>sacred_geometry</code></li>
+              <li><strong className="text-zinc-200">patternType:</strong> <code>fascinator</code>, <code>repetition</code>, <code>cloud</code>, <code>cluster</code>, <code>topology</code></li>
+              <li><strong className="text-zinc-200">pattern:</strong> Depends on patternType. Fascinator: <code>fractal</code>, <code>mandala</code>, <code>particle</code>, <code>flame</code>, <code>dot</code>, <code>flat spiral</code>, <code>pendulum</code>. Repetition: <code>tunnel</code>, <code>rings</code>, <code>kaleidoscope</code>, <code>pulse</code>. Cloud: <code>nebula</code>, <code>smoke</code>, <code>fluid</code>. Cluster: <code>galaxy</code>, <code>swarm</code>, <code>constellation</code>. Topology: <code>wave</code>, <code>nautilus spiral</code>, <code>orb</code>, <code>saddle</code>, <code>plane</code>, <code>random voxel surface</code>, <code>random curved surface</code></li>
               <li><strong className="text-zinc-200">patternSpeed:</strong> Animation speed multiplier (number)</li>
               <li><strong className="text-zinc-200">patternScale:</strong> Pattern size multiplier (number)</li>
               <li><strong className="text-zinc-200">patternComplexity:</strong> Detail level (number)</li>

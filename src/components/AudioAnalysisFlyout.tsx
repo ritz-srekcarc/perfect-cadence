@@ -20,22 +20,26 @@ export function AudioAnalysisFlyout({ isOpen, onClose, onAnalysisComplete }: Aud
     setStatus('Decoding audio and detecting segments...');
     
     try {
-      const analyzed = await analyzeGlobalAudio(audioUrl);
+      const analyzed = await analyzeGlobalAudio(audioUrl, setStatus);
       
       setStatus(`Analyzed ${analyzed.length} segments. Generating timeline...`);
       
       const newSegments: TimelineSegment[] = analyzed.map((seg, i) => {
         // Map sentiment to patterns
-        let pattern = 'spiral';
+        let patternType = 'fascinator';
+        let pattern = 'flat spiral';
         let color = '#00ffcc';
         
         if (seg.sentiment === 'positive') {
+          patternType = 'fascinator';
           pattern = 'mandala';
           color = '#ffcc00';
         } else if (seg.sentiment === 'negative') {
-          pattern = 'waves';
+          patternType = 'topology';
+          pattern = 'wave';
           color = '#ff3300';
         } else if (seg.sentiment === 'neutral') {
+          patternType = 'repetition';
           pattern = 'rings';
           color = '#0088ff';
         }
@@ -48,6 +52,7 @@ export function AudioAnalysisFlyout({ isOpen, onClose, onAnalysisComplete }: Aud
           media: [],
           config: {
             duration: Math.max(2, seg.end - seg.start),
+            patternType,
             pattern,
             patternColor1: color,
             camera: 'orbit',

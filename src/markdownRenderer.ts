@@ -56,7 +56,7 @@ export function parseMarkdownText(text: string): TextLine[] {
     
     // Regex to match bold-italic, bold, italic, and wordlists
     // Wordlist: !{interval,count}(words)
-    const regex = /(\*\*\*.*?\*\*\*|___.*?___|\*\*.*?\*\*|__.*?__|\*.*?\*|_.*?_|!\{[\d.]+,\s*\d+\}\([^)]+\))/g;
+    const regex = /(\*\*\*.*?\*\*\*|___.*?___|\*\*.*?\*\*|__.*?__|\*.*?\*|_.*?_|!\{\s*[\d.]+\s*,\s*\d+\s*\}\([^)]+\))/g;
     
     let lastIndex = 0;
     let match;
@@ -73,7 +73,7 @@ export function parseMarkdownText(text: string): TextLine[] {
 
       const tokenStr = match[0];
       if (tokenStr.startsWith('!{')) {
-        const wlMatch = tokenStr.match(/!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/);
+        const wlMatch = tokenStr.match(/!\{\s*([\d.]+)\s*,\s*(\d+)\s*\}\(([^)]+)\)/);
         if (wlMatch) {
           const interval = parseFloat(wlMatch[1]);
           const count = parseInt(wlMatch[2]);
@@ -102,7 +102,7 @@ export function parseMarkdownText(text: string): TextLine[] {
         }
       } else if (tokenStr.startsWith('***') || tokenStr.startsWith('___')) {
         const content = tokenStr.substring(3, tokenStr.length - 3);
-        const wlMatch = content.match(/^!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)$/);
+        const wlMatch = content.match(/^!\{\s*([\d.]+)\s*,\s*(\d+)\s*\}\(([^)]+)\)$/);
         if (wlMatch) {
           const interval = parseFloat(wlMatch[1]);
           const count = parseInt(wlMatch[2]);
@@ -138,7 +138,7 @@ export function parseMarkdownText(text: string): TextLine[] {
         }
       } else if (tokenStr.startsWith('**') || tokenStr.startsWith('__')) {
         const content = tokenStr.substring(2, tokenStr.length - 2);
-        const wlMatch = content.match(/^!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)$/);
+        const wlMatch = content.match(/^!\{\s*([\d.]+)\s*,\s*(\d+)\s*\}\(([^)]+)\)$/);
         if (wlMatch) {
           const interval = parseFloat(wlMatch[1]);
           const count = parseInt(wlMatch[2]);
@@ -174,7 +174,7 @@ export function parseMarkdownText(text: string): TextLine[] {
         }
       } else if (tokenStr.startsWith('*') || tokenStr.startsWith('_')) {
         const content = tokenStr.substring(1, tokenStr.length - 1);
-        const wlMatch = content.match(/^!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)$/);
+        const wlMatch = content.match(/^!\{\s*([\d.]+)\s*,\s*(\d+)\s*\}\(([^)]+)\)$/);
         if (wlMatch) {
           const interval = parseFloat(wlMatch[1]);
           const count = parseInt(wlMatch[2]);

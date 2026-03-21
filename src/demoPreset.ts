@@ -1,6 +1,28 @@
 export const DEMO_MARKDOWN = `# Neural Synthesis Engine
 Welcome to the next generation of sensory immersion.
 
+## The Singularity
+> Focus on the single point of light.
+
+\`\`\`config
+duration: 10
+pattern: dot
+patternType: fascinator
+patternSpeed: 1.0
+patternScale: 1.5
+patternColor1: #ffffff
+patternColor2: #ffffaa
+camera: static
+textAnimType: fade
+textDisplayPattern: center
+textSize: 40
+textDistance: 20
+binaural: focus
+metronome: 0
+\`\`\`
+
+---
+
 ## Grid State
 > Deep immersion into the cylinder grid field.
 

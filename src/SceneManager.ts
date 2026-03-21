@@ -1,4 +1,4 @@
-import { Engine, Scene, Vector3, HemisphericLight, ArcRotateCamera, MeshBuilder, Mesh, StandardMaterial, Color3, Texture, DynamicTexture, WebXRDefaultExperience, WebXRState, SceneLoader, TransformNode, ParticleSystem, ShaderMaterial, Effect, VertexBuffer, VideoTexture, WebXRSessionManager, SixDofDragBehavior } from '@babylonjs/core';
+import { Engine, Scene, Vector3, HemisphericLight, ArcRotateCamera, MeshBuilder, Mesh, StandardMaterial, Color3, Texture, DynamicTexture, WebXRDefaultExperience, WebXRState, SceneLoader, TransformNode, ParticleSystem, ShaderMaterial, Effect, VertexBuffer, VideoTexture, WebXRSessionManager, SixDofDragBehavior, NoiseProceduralTexture } from '@babylonjs/core';
 import * as GUI from '@babylonjs/gui';
 import { SegmentConfig, MediaItem } from './timelineParser';
 import { parseMarkdownText } from './markdownRenderer';
@@ -49,6 +49,7 @@ export class SceneManager {
   private segmentDuration: number = 0;
   private currentConfig: SegmentConfig | null = null;
   private particleSystem: ParticleSystem | null = null;
+  private baseEmitRate: number = 0;
 
   public getScene(): Scene {
     return this.scene;
@@ -490,73 +491,119 @@ export class SceneManager {
       this.auxTextPlane.isVisible = true;
     }
 
-    // Add new media
-    media.forEach((m, i) => {
-      if (m.type === 'image') {
-        const img = new GUI.Image("media", m.url);
-        img.alpha = m.opacity;
-        if (m.layer === 'aux') {
-          this.auxTextBackground!.addControl(img);
-        } else {
-          this.textBackground!.addControl(img);
-        }
-        this.mediaControls.push(img);
-      } else if (m.type === 'video') {
-        const plane = MeshBuilder.CreatePlane("video", { width: 20, height: 10, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
-        
-        // Parent to the correct text plane to inherit its behavior (world space vs camera locked)
-        if (m.layer === 'aux') {
-          plane.parent = this.auxTextPlane;
-        } else {
-          plane.parent = this.textPlane;
-        }
+    const packMedia = (items: MediaItem[], layer: 'main' | 'aux') => {
+      const N = items.length;
+      if (N === 0) return;
+
+      const cols = Math.ceil(Math.sqrt(N));
+      const rows = Math.ceil(N / cols);
+
+      let localW = 0;
+      let localH = 0;
+
+      if (layer === 'aux') {
+        const dist = Math.max(0.1, this.currentConfig?.auxDistance ?? 10);
+        const fov = this.camera.fov;
+        const aspectRatio = this.engine.getAspectRatio(this.camera);
+        const visibleHeight = 2 * dist * Math.tan(fov / 2);
+        const visibleWidth = visibleHeight * aspectRatio;
+        // The auxTextPlane is scaled by dist / 5, so we divide by that to get local size
+        localW = visibleWidth / (dist / 5);
+        localH = visibleHeight / (dist / 5);
+      } else {
+        const dist = Math.max(0.1, this.currentConfig?.textDistance ?? 10);
+        // Fit inside pattern: say 15x10 world size
+        localW = 15 / (dist / 5);
+        localH = 10 / (dist / 5);
+      }
+
+      const cellW = localW / cols;
+      const cellH = localH / rows;
+
+      items.forEach((m, i) => {
+        const c = i % cols;
+        const r = Math.floor(i / cols);
+
+        // Create plane with 1x1 size, we will scale it
+        const plane = MeshBuilder.CreatePlane(`media_${layer}_${i}`, { width: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+        plane.parent = layer === 'aux' ? this.auxTextPlane : this.textPlane;
         
         // Position slightly behind the text plane (Z is local forward, so negative is behind)
-        plane.position = new Vector3(0, 0, -0.01 - i * 0.01); 
-        
-        const mat = new StandardMaterial("videoMat", this.scene);
-        const videoTexture = new VideoTexture("videoTex", m.url, this.scene, false, false, VideoTexture.TRILINEAR_SAMPLINGMODE, {
-          autoPlay: true,
-          autoUpdateTexture: true,
-          loop: true,
-          muted: m.volume === 0
-        });
-        
-        if (videoTexture.video) {
-          videoTexture.video.crossOrigin = "anonymous";
-        }
-        
-        // Ensure video plays and handle potential autoplay blocks
-        const playVideo = () => {
-          if (videoTexture.video) {
-            videoTexture.video.play().catch(e => {
-              console.warn("Video autoplay blocked, retrying muted:", e);
-              videoTexture.video.muted = true;
-              videoTexture.video.play().catch(err => console.error("Video failed to play even when muted:", err));
-            });
-          }
-        };
+        const x = -localW / 2 + cellW / 2 + c * cellW;
+        const y = localH / 2 - cellH / 2 - r * cellH;
+        plane.position = new Vector3(x, y, -0.01 - i * 0.01);
 
-        // Try playing immediately
-        playVideo();
-        
-        // Also try playing on next frame to ensure engine is ready
-        setTimeout(playVideo, 100);
-        
-        if (m.volume !== undefined) {
-          videoTexture.video.volume = m.volume;
-        } else {
-          videoTexture.video.volume = 1;
-        }
-        
-        mat.diffuseTexture = videoTexture;
+        const mat = new StandardMaterial(`mediaMat_${layer}_${i}`, this.scene);
         mat.emissiveColor = Color3.White();
         mat.disableLighting = true;
         mat.alpha = m.opacity;
+
+        const applyScaling = (texW: number, texH: number) => {
+          if (texW === 0 || texH === 0) return;
+          const aspect = texW / texH;
+          const cellAspect = cellW / cellH;
+          let w, h;
+          if (aspect > cellAspect) {
+            w = cellW;
+            h = cellW / aspect;
+          } else {
+            h = cellH;
+            w = cellH * aspect;
+          }
+          // Add a small margin (e.g., 95% of cell size)
+          plane.scaling = new Vector3(w * 0.95, h * 0.95, 1);
+        };
+
+        // Default scaling before load
+        plane.scaling = new Vector3(cellW * 0.95, cellH * 0.95, 1);
+
+        if (m.type === 'video') {
+          const videoTexture = new VideoTexture(`videoTex_${layer}_${i}`, m.url, this.scene, false, false, VideoTexture.TRILINEAR_SAMPLINGMODE, {
+            autoPlay: true,
+            autoUpdateTexture: true,
+            loop: true,
+            muted: m.volume === 0
+          });
+          if (videoTexture.video) {
+            videoTexture.video.crossOrigin = "anonymous";
+            videoTexture.video.onloadedmetadata = () => {
+              applyScaling(videoTexture.video.videoWidth, videoTexture.video.videoHeight);
+            };
+            const playVideo = () => {
+              if (videoTexture.video) {
+                videoTexture.video.play().catch(e => {
+                  console.warn("Video autoplay blocked, retrying muted:", e);
+                  videoTexture.video.muted = true;
+                  videoTexture.video.play().catch(err => console.error("Video failed to play even when muted:", err));
+                });
+              }
+            };
+            playVideo();
+            setTimeout(playVideo, 100);
+            videoTexture.video.volume = m.volume !== undefined ? m.volume : 1;
+          }
+          mat.diffuseTexture = videoTexture;
+        } else {
+          const texture = new Texture(m.url, this.scene);
+          texture.hasAlpha = true;
+          texture.onLoadObservable.add(() => {
+            const size = texture.getSize();
+            applyScaling(size.width, size.height);
+          });
+          mat.diffuseTexture = texture;
+          mat.useAlphaFromDiffuseTexture = true;
+        }
+
         plane.material = mat;
         this.mediaMeshes.push(plane);
-      }
-    });
+      });
+    };
+
+    const mainMedia = media.filter(m => m.layer !== 'aux');
+    const auxMedia = media.filter(m => m.layer === 'aux');
+
+    packMedia(mainMedia, 'main');
+    packMedia(auxMedia, 'aux');
   }
 
   /**
@@ -580,31 +627,49 @@ export class SceneManager {
     if (patternChanged) {
       this.clearCurrentMeshes();
       this.patternRoot = new Mesh("patternRoot", this.scene);
-      switch (config.pattern) {
-        case 'spiral':
+      switch (config.patternType) {
+        case 'fascinator':
+        case 'default':
+        case 'hypnotic':
+        case 'double':
+        case 'sacred_geometry':
+          this.createFascinator(config.pattern || 'dot', this.patternRoot as Mesh);
+          break;
+        case 'repetition':
+        case 'cylinder':
+        case 'infinite':
+          this.createRepetition();
+          break;
+        case 'cloud':
+        case 'breathing':
+          if (config.pattern === 'bubbles') this.createBubbles();
+          else if (config.pattern === 'nebula') this.createNebula();
+          else if (config.pattern === 'smoke') this.createSmoke();
+          else if (config.pattern === 'fluid') this.createFluid();
+          else if (config.pattern === 'swarm') this.createSwarm();
+          else if (config.pattern === 'constellation') this.createConstellation();
+          else this.createParticles();
+          break;
+        case 'cluster':
+          this.createCluster();
+          break;
+        case 'topology':
+        case 'sphere':
+        case 'galaxy':
+          if (config.pattern === 'pulse') this.createPulse();
+          else if (config.pattern === 'tunnel') this.createTunnel();
+          else if (config.pattern === 'wave' || config.pattern === 'waves') this.createWaves();
+          else if (config.pattern === 'nautilus spiral') this.createSpiral();
+          else if (config.pattern === 'orb') this.createRings();
+          else if (config.pattern === 'saddle') this.createWaves();
+          else if (config.pattern === 'plane') this.createWaves();
+          else if (config.pattern === 'random voxel surface') this.createWaves();
+          else if (config.pattern === 'random curved surface') this.createWaves();
+          else if (config.pattern === 'galaxy') this.createSpiral();
+          else this.createWaves();
+          break;
+        default:
           this.createSpiral();
-          break;
-        case 'tunnel':
-          this.createTunnel();
-          break;
-        case 'fractal':
-        case 'rings':
-          this.createRings();
-          break;
-        case 'particles':
-          this.createParticles();
-          break;
-        case 'mandala':
-          this.createMandala();
-          break;
-        case 'kaleidoscope':
-          this.createKaleidoscope();
-          break;
-        case 'waves':
-          this.createWaves();
-          break;
-        case 'pulse':
-          this.createPulse();
           break;
       }
       
@@ -712,7 +777,8 @@ export class SceneManager {
   }
 
   private createSpiral() {
-    const type = this.currentConfig?.patternType || 'default';
+    const type = this.currentConfig?.patternType || 'fascinator';
+    const pattern = this.currentConfig?.pattern || 'flat spiral';
     const complexity = this.currentConfig?.patternComplexity ?? 1;
     const scale = this.currentConfig?.patternScale ?? 1.0;
     
@@ -721,30 +787,33 @@ export class SceneManager {
     material.wireframe = true;
     material.alpha = 0.5;
 
-    let arms = type === 'galaxy' ? 5 : (type === 'double' ? 2 : 1);
-    if (type === 'vortex') arms = 8;
-    if (type === 'infinite') arms = 3;
+    let arms = pattern === 'galaxy' || type === 'galaxy' ? 5 : (type === 'double' ? 2 : 1);
+    if (pattern === 'vortex' || type === 'vortex') arms = 8;
+    if (pattern === 'helix') arms = 4;
+    if (pattern === 'nautilus spiral' || type === 'infinite') arms = 3;
     
     arms = Math.max(1, Math.floor(arms * complexity));
     
     for (let a = 0; a < arms; a++) {
       const armOffset = (Math.PI * 2 / arms) * a;
       const paths = [];
-      const numPaths = type === 'infinite' ? 40 : 20;
-      const pathLength = type === 'vortex' ? 400 : 200;
+      const numPaths = pattern === 'nautilus spiral' || type === 'infinite' ? 40 : 20;
+      const pathLength = pattern === 'vortex' || type === 'vortex' || pattern === 'helix' ? 400 : 200;
       
       for (let i = 0; i < numPaths; i++) {
         const path = [];
         for (let j = 0; j < pathLength; j++) {
           const angle = j * 0.1 + (i * Math.PI * 2 / numPaths) + armOffset;
-          let radius = type === 'galaxy' ? j * 0.05 : j * 0.05;
-          if (type === 'vortex') radius = Math.pow(j * 0.02, 1.5);
-          if (type === 'infinite') radius = Math.sin(j * 0.05) * 5 + j * 0.02;
+          let radius = pattern === 'galaxy' || type === 'galaxy' ? j * 0.05 : j * 0.05;
+          if (pattern === 'vortex' || type === 'vortex') radius = Math.pow(j * 0.02, 1.5);
+          if (pattern === 'helix') radius = 5 * scale;
+          if (pattern === 'nautilus spiral' || type === 'infinite') radius = Math.sin(j * 0.05) * 5 + j * 0.02;
           
           radius *= scale;
           
-          let y = type === 'galaxy' ? (Math.sin(j * 0.1) * 2) : j * 0.05 - 5;
-          if (type === 'vortex') y = -j * 0.1;
+          let y = pattern === 'galaxy' || type === 'galaxy' ? (Math.sin(j * 0.1) * 2) : j * 0.05 - 5;
+          if (pattern === 'vortex' || type === 'vortex') y = -j * 0.1;
+          if (pattern === 'helix') y = j * 0.1 - 20;
           
           y *= scale;
           
@@ -775,6 +844,7 @@ export class SceneManager {
 
   private createRings() {
     const type = this.currentConfig?.patternType || 'default';
+    const pattern = this.currentConfig?.pattern || 'ring';
     const complexity = this.currentConfig?.patternComplexity ?? 1;
     const scale = this.currentConfig?.patternScale ?? 1.0;
     
@@ -787,18 +857,37 @@ export class SceneManager {
     baseTorus.material = material;
     this.currentMeshes.push(baseTorus);
 
+    // If it's a fascinator, just return the single ring
+    if (type === 'fascinator') {
+      return;
+    }
+
     const count = Math.floor(100 * complexity);
 
     for (let i = 0; i < count; i++) {
       const instance = baseTorus.createInstance("i" + i);
       
-      if (type === 'sphere') {
+      if (pattern === 'sphere' || type === 'sphere') {
         const phi = Math.acos(-1 + (2 * i) / count);
         const theta = Math.sqrt(count * Math.PI) * phi;
         const r = 8 * scale;
         instance.position = new Vector3(r * Math.cos(theta) * Math.sin(phi), r * Math.sin(theta) * Math.sin(phi), r * Math.cos(phi));
         instance.scaling = new Vector3(0.5, 0.5, 0.5);
         instance.lookAt(Vector3.Zero());
+      } else if (pattern === 'grid') {
+        const size = Math.ceil(Math.sqrt(count));
+        const x = (i % size) - size / 2;
+        const y = Math.floor(i / size) - size / 2;
+        const spacing = 2 * scale;
+        instance.position = new Vector3(x * spacing, y * spacing, 0);
+        instance.rotation.x = Math.PI / 2;
+      } else if (pattern === 'cube') {
+        const size = Math.ceil(Math.pow(count, 1/3));
+        const x = (i % size) - size / 2;
+        const y = (Math.floor(i / size) % size) - size / 2;
+        const z = Math.floor(i / (size * size)) - size / 2;
+        const spacing = 3 * scale;
+        instance.position = new Vector3(x * spacing, y * spacing, z * spacing);
       } else if (type === 'cylinder') {
         const angle = i * 0.5;
         const radius = 5 * scale;
@@ -825,6 +914,7 @@ export class SceneManager {
   private createParticles() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const speed = this.currentConfig?.patternSpeed ?? 1.0;
     
     this.particleSystem = new ParticleSystem("particles", Math.floor(2000 * complexity), this.scene);
     this.particleSystem.particleTexture = new Texture("https://raw.githubusercontent.com/PatrickRyanMS/BabylonJStextures/master/ParticleSystems/Sun/T_Sunflare.png", this.scene);
@@ -838,7 +928,8 @@ export class SceneManager {
     this.particleSystem.maxSize = 0.5 * scale;
     this.particleSystem.minLifeTime = 1;
     this.particleSystem.maxLifeTime = 3;
-    this.particleSystem.emitRate = Math.floor(500 * complexity);
+    this.baseEmitRate = Math.floor(500 * complexity);
+    this.particleSystem.emitRate = this.baseEmitRate;
     this.particleSystem.blendMode = ParticleSystem.BLENDMODE_ONEONE;
     this.particleSystem.gravity = new Vector3(0, 0, 0);
     this.particleSystem.direction1 = new Vector3(-1, -1, -1);
@@ -847,14 +938,569 @@ export class SceneManager {
     this.particleSystem.maxAngularSpeed = Math.PI;
     this.particleSystem.minEmitPower = 1;
     this.particleSystem.maxEmitPower = 3;
-    this.particleSystem.updateSpeed = 0.005;
+    this.particleSystem.updateSpeed = 0.005 * speed;
     this.particleSystem.start();
+  }
+
+  private createRepetition() {
+    const config = this.currentConfig;
+    if (!config) return;
+
+    const count = config.repetitionCount || 10;
+    const basePattern = config.repetitionBasePattern || 'dot';
+    const pattern = config.pattern || 'grid';
+    const scale = config.patternScale ?? 1.0;
+
+    for (let i = 0; i < count; i++) {
+      const instanceRoot = new Mesh(`rep_${i}`, this.scene);
+      instanceRoot.parent = this.patternRoot;
+      
+      // Position based on pattern
+      if (pattern === 'grid') {
+        const size = Math.ceil(Math.sqrt(count));
+        const x = (i % size) - size / 2;
+        const y = Math.floor(i / size) - size / 2;
+        instanceRoot.position.set(x * 5 * scale, y * 5 * scale, 0);
+      } else if (pattern === 'sphere') {
+        const phi = Math.acos(-1 + (2 * i) / count);
+        const theta = Math.sqrt(count * Math.PI) * phi;
+        const r = 10 * scale;
+        instanceRoot.position.set(r * Math.cos(theta) * Math.sin(phi), r * Math.sin(theta) * Math.sin(phi), r * Math.cos(phi));
+      } else if (pattern === 'cube') {
+        const size = Math.ceil(Math.pow(count, 1/3));
+        const x = (i % size) - size / 2;
+        const y = (Math.floor(i / size) % size) - size / 2;
+        const z = Math.floor(i / (size * size)) - size / 2;
+        instanceRoot.position.set(x * 6 * scale, y * 6 * scale, z * 6 * scale);
+      } else if (pattern === 'march') {
+        // Snake-like progression
+        instanceRoot.position.set(0, 0, i * 5 * scale);
+      } else if (pattern === 'helix') {
+        const arms = 3; // Multi-armed spiral
+        const arm = i % arms;
+        const armOffset = (Math.PI * 2 / arms) * arm;
+        const idxInArm = Math.floor(i / arms);
+        const angle = idxInArm * 0.5 + armOffset;
+        const radius = 5 * scale;
+        instanceRoot.position.set(Math.cos(angle) * radius, idxInArm * 0.5 * scale, Math.sin(angle) * radius);
+      } else if (pattern === 'polygon') {
+        // Torus arrangement - more complex 3D shape
+        const majorRadius = 10 * scale;
+        const minorRadius = 4 * scale;
+        const u = (i / count) * Math.PI * 2;
+        const v = (i * 5 / count) * Math.PI * 2; // Twisted
+        const x = (majorRadius + minorRadius * Math.cos(v)) * Math.cos(u);
+        const y = (majorRadius + minorRadius * Math.cos(v)) * Math.sin(u);
+        const z = minorRadius * Math.sin(v);
+        instanceRoot.position.set(x, y, z);
+      } else if (pattern === 'vortex') {
+        const angle = i * 0.2;
+        const radius = Math.pow(i * 0.2, 1.5) * scale;
+        instanceRoot.position.set(Math.cos(angle) * radius, -i * 0.1 * scale, Math.sin(angle) * radius);
+      } else if (pattern === 'spiral') {
+        const angle = i * 0.5;
+        const radius = i * 0.5 * scale;
+        instanceRoot.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+      }
+
+      // Create the base fascinator at this instance
+      this.createFascinator(basePattern, instanceRoot);
+    }
+  }
+
+  private createFascinator(pattern: string, parent: Mesh) {
+    const oldRoot = this.patternRoot;
+    this.patternRoot = parent;
+    
+    const originalConfig = this.currentConfig;
+    if (originalConfig) {
+      this.currentConfig = { ...originalConfig, pattern: pattern, patternType: 'fascinator' };
+    }
+    
+    if (pattern === 'fractal') this.createRings();
+    else if (pattern === 'mandala') this.createMandala();
+    else if (pattern === 'particle' || pattern === 'particles') this.createParticles();
+    else if (pattern === 'flame') this.createParticles();
+    else if (pattern === 'dot') this.createDot();
+    else if (pattern === 'flat spiral' || pattern === 'spiral') this.createSpiral();
+    else if (pattern === 'pendulum') this.createPulse();
+    else if (pattern === 'wheel') this.createWheel();
+    else if (pattern === 'dial') this.createDial();
+    else if (pattern === 'clock') this.createClock();
+    else if (pattern === 'torus') this.createTorus();
+    else if (pattern === 'cone') this.createCone();
+    else if (pattern === 'ring') this.createRings();
+    else if (pattern === 'kaleido') this.createKaleidoscope();
+    else this.createSpiral();
+    
+    this.currentConfig = originalConfig;
+    this.patternRoot = oldRoot;
+  }
+
+  private createNebula() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    
+    this.particleSystem = new ParticleSystem("nebula", Math.floor(3000 * complexity), this.scene);
+    this.particleSystem.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/cloud.png", this.scene);
+    this.particleSystem.emitter = this.patternRoot || Vector3.Zero();
+    
+    this.particleSystem.minEmitBox = new Vector3(-15 * scale, -10 * scale, -15 * scale);
+    this.particleSystem.maxEmitBox = new Vector3(15 * scale, 10 * scale, 15 * scale);
+    
+    this.particleSystem.color1 = this.parseColor(this.currentConfig?.patternColor1, new Color3(0.5, 0.1, 0.8)).toColor4(0.3);
+    this.particleSystem.color2 = this.parseColor(this.currentConfig?.patternColor2, new Color3(0.1, 0.5, 0.8)).toColor4(0.3);
+    this.particleSystem.colorDead = new Color3(0, 0, 0).toColor4(0);
+    
+    this.particleSystem.minSize = 5 * scale;
+    this.particleSystem.maxSize = 15 * scale;
+    this.particleSystem.minLifeTime = 5;
+    this.particleSystem.maxLifeTime = 10;
+    this.baseEmitRate = Math.floor(150 * complexity);
+    this.particleSystem.emitRate = this.baseEmitRate;
+    this.particleSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
+    
+    this.particleSystem.gravity = new Vector3(0, 0, 0);
+    this.particleSystem.direction1 = new Vector3(-0.1, -0.1, -0.1);
+    this.particleSystem.direction2 = new Vector3(0.1, 0.1, 0.1);
+    
+    this.particleSystem.minAngularSpeed = -0.2;
+    this.particleSystem.maxAngularSpeed = 0.2;
+    this.particleSystem.minEmitPower = 0.1;
+    this.particleSystem.maxEmitPower = 0.5;
+    this.particleSystem.updateSpeed = 0.005 * speed;
+    
+    const noiseTexture = new NoiseProceduralTexture("nebulaNoise", 256, this.scene);
+    noiseTexture.animationSpeedFactor = 0.5 * speed;
+    noiseTexture.persistence = 2;
+    noiseTexture.brightness = 0.5;
+    noiseTexture.octaves = 2;
+    this.particleSystem.noiseTexture = noiseTexture;
+    this.particleSystem.noiseStrength = new Vector3(2 * scale, 2 * scale, 2 * scale);
+    
+    this.particleSystem.start();
+  }
+
+  private createSmoke() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    
+    this.particleSystem = new ParticleSystem("smoke", Math.floor(2000 * complexity), this.scene);
+    this.particleSystem.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/smoke.png", this.scene);
+    this.particleSystem.emitter = this.patternRoot || Vector3.Zero();
+    
+    this.particleSystem.minEmitBox = new Vector3(-2 * scale, -5 * scale, -2 * scale);
+    this.particleSystem.maxEmitBox = new Vector3(2 * scale, -5 * scale, 2 * scale);
+    
+    const baseColor = this.parseColor(this.currentConfig?.patternColor1, new Color3(0.5, 0.5, 0.5));
+    this.particleSystem.color1 = baseColor.toColor4(0.6);
+    this.particleSystem.color2 = baseColor.scale(0.5).toColor4(0.3);
+    this.particleSystem.colorDead = new Color3(0, 0, 0).toColor4(0);
+    
+    this.particleSystem.minSize = 2 * scale;
+    this.particleSystem.maxSize = 8 * scale;
+    this.particleSystem.minLifeTime = 3;
+    this.particleSystem.maxLifeTime = 8;
+    this.baseEmitRate = Math.floor(150 * complexity);
+    this.particleSystem.emitRate = this.baseEmitRate;
+    this.particleSystem.blendMode = ParticleSystem.BLENDMODE_STANDARD;
+    
+    this.particleSystem.gravity = new Vector3(0, 2 * scale, 0); // Rises up
+    this.particleSystem.direction1 = new Vector3(-0.5, 1, -0.5);
+    this.particleSystem.direction2 = new Vector3(0.5, 2, 0.5);
+    
+    this.particleSystem.minAngularSpeed = -1;
+    this.particleSystem.maxAngularSpeed = 1;
+    this.particleSystem.minEmitPower = 0.5;
+    this.particleSystem.maxEmitPower = 1.5;
+    this.particleSystem.updateSpeed = 0.01 * speed;
+
+    // Make smoke expand as it rises
+    this.particleSystem.addSizeGradient(0, 1 * scale);
+    this.particleSystem.addSizeGradient(1, 4 * scale);
+    
+    // Fade out
+    this.particleSystem.addColorGradient(0, baseColor.toColor4(0));
+    this.particleSystem.addColorGradient(0.2, baseColor.toColor4(0.6));
+    this.particleSystem.addColorGradient(1, baseColor.scale(0.2).toColor4(0));
+    
+    this.particleSystem.start();
+  }
+
+  private createFluid() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    
+    this.particleSystem = new ParticleSystem("fluid", Math.floor(4000 * complexity), this.scene);
+    this.particleSystem.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
+    this.particleSystem.emitter = this.patternRoot || Vector3.Zero();
+    
+    this.particleSystem.minEmitBox = new Vector3(-10 * scale, -10 * scale, -10 * scale);
+    this.particleSystem.maxEmitBox = new Vector3(10 * scale, 10 * scale, 10 * scale);
+    
+    this.particleSystem.color1 = this.parseColor(this.currentConfig?.patternColor1, new Color3(0.1, 0.5, 1.0)).toColor4(0.8);
+    this.particleSystem.color2 = this.parseColor(this.currentConfig?.patternColor2, new Color3(0.0, 0.2, 0.8)).toColor4(0.8);
+    this.particleSystem.colorDead = new Color3(0, 0, 0.2).toColor4(0);
+    
+    this.particleSystem.minSize = 0.5 * scale;
+    this.particleSystem.maxSize = 2 * scale;
+    this.particleSystem.minLifeTime = 1;
+    this.particleSystem.maxLifeTime = 3;
+    this.baseEmitRate = Math.floor(800 * complexity);
+    this.particleSystem.emitRate = this.baseEmitRate;
+    this.particleSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
+    
+    this.particleSystem.gravity = new Vector3(0, -2 * scale, 0); // Flows down
+    this.particleSystem.direction1 = new Vector3(-1, -1, -1);
+    this.particleSystem.direction2 = new Vector3(1, 0, 1);
+    
+    this.particleSystem.minAngularSpeed = -2;
+    this.particleSystem.maxAngularSpeed = 2;
+    this.particleSystem.minEmitPower = 1;
+    this.particleSystem.maxEmitPower = 3;
+    this.particleSystem.updateSpeed = 0.015 * speed;
+    
+    const noiseTexture = new NoiseProceduralTexture("fluidNoise", 256, this.scene);
+    noiseTexture.animationSpeedFactor = 5 * speed;
+    noiseTexture.persistence = 1.2;
+    noiseTexture.brightness = 0.5;
+    noiseTexture.octaves = 2;
+    this.particleSystem.noiseTexture = noiseTexture;
+    this.particleSystem.noiseStrength = new Vector3(5 * scale, 5 * scale, 5 * scale);
+    
+    this.particleSystem.start();
+  }
+
+  private createSwarm() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    
+    this.particleSystem = new ParticleSystem("swarm", Math.floor(2000 * complexity), this.scene);
+    this.particleSystem.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
+    this.particleSystem.emitter = this.patternRoot || Vector3.Zero();
+    
+    this.particleSystem.minEmitBox = new Vector3(-8 * scale, -8 * scale, -8 * scale);
+    this.particleSystem.maxEmitBox = new Vector3(8 * scale, 8 * scale, 8 * scale);
+    
+    this.particleSystem.color1 = this.parseColor(this.currentConfig?.patternColor1, new Color3(1.0, 0.8, 0.2)).toColor4(1.0);
+    this.particleSystem.color2 = this.parseColor(this.currentConfig?.patternColor2, new Color3(1.0, 0.4, 0.0)).toColor4(1.0);
+    this.particleSystem.colorDead = new Color3(0, 0, 0).toColor4(0);
+    
+    this.particleSystem.minSize = 0.2 * scale;
+    this.particleSystem.maxSize = 0.8 * scale;
+    this.particleSystem.minLifeTime = 0.5;
+    this.particleSystem.maxLifeTime = 2;
+    this.baseEmitRate = Math.floor(500 * complexity);
+    this.particleSystem.emitRate = this.baseEmitRate;
+    this.particleSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
+    
+    this.particleSystem.gravity = new Vector3(0, 0, 0);
+    this.particleSystem.direction1 = new Vector3(-2, -2, -2);
+    this.particleSystem.direction2 = new Vector3(2, 2, 2);
+    
+    this.particleSystem.minAngularSpeed = -5;
+    this.particleSystem.maxAngularSpeed = 5;
+    this.particleSystem.minEmitPower = 2;
+    this.particleSystem.maxEmitPower = 6;
+    this.particleSystem.updateSpeed = 0.02 * speed;
+    
+    const noiseTexture = new NoiseProceduralTexture("swarmNoise", 256, this.scene);
+    noiseTexture.animationSpeedFactor = 10 * speed;
+    noiseTexture.persistence = 0.8;
+    noiseTexture.brightness = 0.5;
+    noiseTexture.octaves = 3;
+    this.particleSystem.noiseTexture = noiseTexture;
+    this.particleSystem.noiseStrength = new Vector3(10 * scale, 10 * scale, 10 * scale);
+    
+    this.particleSystem.start();
+  }
+
+  private createConstellation() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    
+    this.particleSystem = new ParticleSystem("constellation", Math.floor(1000 * complexity), this.scene);
+    this.particleSystem.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/star.png", this.scene);
+    this.particleSystem.emitter = this.patternRoot || Vector3.Zero();
+    
+    this.particleSystem.minEmitBox = new Vector3(-20 * scale, -20 * scale, -20 * scale);
+    this.particleSystem.maxEmitBox = new Vector3(20 * scale, 20 * scale, 20 * scale);
+    
+    this.particleSystem.color1 = this.parseColor(this.currentConfig?.patternColor1, new Color3(1.0, 1.0, 1.0)).toColor4(1.0);
+    this.particleSystem.color2 = this.parseColor(this.currentConfig?.patternColor2, new Color3(0.8, 0.9, 1.0)).toColor4(0.8);
+    this.particleSystem.colorDead = new Color3(0, 0, 0).toColor4(0);
+    
+    this.particleSystem.minSize = 0.5 * scale;
+    this.particleSystem.maxSize = 1.5 * scale;
+    this.particleSystem.minLifeTime = 10;
+    this.particleSystem.maxLifeTime = 20;
+    this.baseEmitRate = Math.floor(50 * complexity);
+    this.particleSystem.emitRate = this.baseEmitRate;
+    this.particleSystem.blendMode = ParticleSystem.BLENDMODE_ADD;
+    
+    this.particleSystem.gravity = new Vector3(0, 0, 0);
+    this.particleSystem.direction1 = new Vector3(-0.05, -0.05, -0.05);
+    this.particleSystem.direction2 = new Vector3(0.05, 0.05, 0.05);
+    
+    this.particleSystem.minAngularSpeed = -0.1;
+    this.particleSystem.maxAngularSpeed = 0.1;
+    this.particleSystem.minEmitPower = 0;
+    this.particleSystem.maxEmitPower = 0.1;
+    this.particleSystem.updateSpeed = 0.005 * speed;
+    
+    // Twinkle effect
+    this.particleSystem.addColorGradient(0, new Color3(0, 0, 0).toColor4(0));
+    this.particleSystem.addColorGradient(0.1, new Color3(1, 1, 1).toColor4(1));
+    this.particleSystem.addColorGradient(0.5, new Color3(0.5, 0.5, 0.5).toColor4(0.5));
+    this.particleSystem.addColorGradient(0.9, new Color3(1, 1, 1).toColor4(1));
+    this.particleSystem.addColorGradient(1, new Color3(0, 0, 0).toColor4(0));
+    
+    this.particleSystem.start();
+  }
+
+  private createBubbles() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    
+    this.particleSystem = new ParticleSystem("bubbles", Math.floor(1000 * complexity), this.scene);
+    this.particleSystem.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
+    this.particleSystem.emitter = this.patternRoot || Vector3.Zero();
+    
+    // Emit from a base plane
+    this.particleSystem.minEmitBox = new Vector3(-10 * scale, -2 * scale, -10 * scale);
+    this.particleSystem.maxEmitBox = new Vector3(10 * scale, 0, 10 * scale);
+    
+    this.particleSystem.color1 = this.parseColor(this.currentConfig?.patternColor1, new Color3(0.7, 0.9, 1.0)).toColor4(0.8);
+    this.particleSystem.color2 = this.parseColor(this.currentConfig?.patternColor2, new Color3(0.4, 0.7, 1.0)).toColor4(0.5);
+    this.particleSystem.colorDead = new Color3(0, 0, 0.2).toColor4(0);
+    
+    this.particleSystem.minSize = 0.2 * scale;
+    this.particleSystem.maxSize = 0.8 * scale;
+    this.particleSystem.minLifeTime = 2;
+    this.particleSystem.maxLifeTime = 5;
+    this.baseEmitRate = Math.floor(200 * complexity);
+    this.particleSystem.emitRate = this.baseEmitRate;
+    
+    this.particleSystem.gravity = new Vector3(0, 2 * scale, 0); // Percolate UP
+    this.particleSystem.direction1 = new Vector3(-0.5, 1, -0.5);
+    this.particleSystem.direction2 = new Vector3(0.5, 1, 0.5);
+    
+    this.particleSystem.minEmitPower = 1;
+    this.particleSystem.maxEmitPower = 3;
+    this.particleSystem.updateSpeed = 0.01 * speed;
+    
+    this.particleSystem.start();
+  }
+
+  private createWheel() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const color = this.parseColor(this.currentConfig?.patternColor1, new Color3(1, 1, 1));
+
+    const root = new Mesh("wheelRoot", this.scene);
+    root.parent = this.patternRoot;
+
+    const segments = Math.floor(12 * complexity);
+    for (let i = 0; i < segments; i++) {
+      const angle = (i / segments) * Math.PI * 2;
+      const spoke = MeshBuilder.CreateBox(`spoke_${i}`, { width: 0.1 * scale, height: 5 * scale, depth: 0.1 * scale }, this.scene);
+      spoke.parent = root;
+      spoke.position.set(Math.cos(angle) * 2.5 * scale, Math.sin(angle) * 2.5 * scale, 0);
+      spoke.rotation.z = angle;
+      
+      const mat = new StandardMaterial("spokeMat", this.scene);
+      mat.emissiveColor = color;
+      mat.disableLighting = true;
+      spoke.material = mat;
+      this.currentMeshes.push(spoke);
+    }
+
+    const rim = MeshBuilder.CreateTorus("rim", { diameter: 5 * scale, thickness: 0.1 * scale, tessellation: 64 }, this.scene);
+    rim.parent = root;
+    rim.rotation.x = Math.PI / 2;
+    const rimMat = new StandardMaterial("rimMat", this.scene);
+    rimMat.emissiveColor = color;
+    rimMat.disableLighting = true;
+    rim.material = rimMat;
+    this.currentMeshes.push(rim);
+  }
+
+  private createDial() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const color = this.parseColor(this.currentConfig?.patternColor1, new Color3(1, 1, 1));
+    const color2 = this.parseColor(this.currentConfig?.patternColor2, new Color3(1, 0, 0));
+
+    const root = new Mesh("dialRoot", this.scene);
+    root.parent = this.patternRoot;
+
+    const face = MeshBuilder.CreateDisc("dialFace", { radius: 3 * scale, tessellation: 64 }, this.scene);
+    face.parent = root;
+    const faceMat = new StandardMaterial("faceMat", this.scene);
+    faceMat.emissiveColor = color.scale(0.2);
+    faceMat.alpha = 0.5;
+    faceMat.disableLighting = true;
+    face.material = faceMat;
+    this.currentMeshes.push(face);
+
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      const tick = MeshBuilder.CreateBox(`tick_${i}`, { width: 0.05 * scale, height: 0.5 * scale, depth: 0.05 * scale }, this.scene);
+      tick.parent = root;
+      tick.position.set(Math.cos(angle) * 2.7 * scale, Math.sin(angle) * 2.7 * scale, 0);
+      tick.rotation.z = angle;
+      const tickMat = new StandardMaterial("tickMat", this.scene);
+      tickMat.emissiveColor = color;
+      tickMat.disableLighting = true;
+      tick.material = tickMat;
+      this.currentMeshes.push(tick);
+    }
+
+    const hand = MeshBuilder.CreateBox("hand", { width: 0.1 * scale, height: 2.5 * scale, depth: 0.1 * scale }, this.scene);
+    hand.parent = root;
+    hand.setPivotPoint(new Vector3(0, -1.25 * scale, 0));
+    hand.position.y = 1.25 * scale;
+    const handMat = new StandardMaterial("handMat", this.scene);
+    handMat.emissiveColor = color2;
+    handMat.disableLighting = true;
+    hand.material = handMat;
+    this.currentMeshes.push(hand);
+  }
+
+  private createClock() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const color = this.parseColor(this.currentConfig?.patternColor1, new Color3(1, 1, 1));
+
+    const root = new Mesh("clockRoot", this.scene);
+    root.parent = this.patternRoot;
+
+    // Hour hand
+    const hourHand = MeshBuilder.CreateBox("hourHand", { width: 0.15 * scale, height: 1.5 * scale, depth: 0.1 * scale }, this.scene);
+    hourHand.parent = root;
+    hourHand.setPivotPoint(new Vector3(0, -0.75 * scale, 0));
+    hourHand.position.y = 0.75 * scale;
+    const hourMat = new StandardMaterial("hourMat", this.scene);
+    hourMat.emissiveColor = color;
+    hourMat.disableLighting = true;
+    hourHand.material = hourMat;
+    this.currentMeshes.push(hourHand);
+
+    // Minute hand
+    const minuteHand = MeshBuilder.CreateBox("minuteHand", { width: 0.1 * scale, height: 2.5 * scale, depth: 0.1 * scale }, this.scene);
+    minuteHand.parent = root;
+    minuteHand.setPivotPoint(new Vector3(0, -1.25 * scale, 0));
+    minuteHand.position.y = 1.25 * scale;
+    minuteHand.position.z = -0.1 * scale;
+    const minuteMat = new StandardMaterial("minuteMat", this.scene);
+    minuteMat.emissiveColor = color;
+    minuteMat.disableLighting = true;
+    minuteHand.material = minuteMat;
+    this.currentMeshes.push(minuteHand);
+  }
+
+  private createTorus() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const color = this.parseColor(this.currentConfig?.patternColor1, new Color3(1, 1, 1));
+    const torus = MeshBuilder.CreateTorus("torus", { diameter: 2 * scale, thickness: 0.2 * scale, tessellation: 32 }, this.scene);
+    torus.parent = this.patternRoot;
+    const mat = new StandardMaterial("torusMat", this.scene);
+    mat.emissiveColor = color;
+    mat.disableLighting = true;
+    torus.material = mat;
+    this.currentMeshes.push(torus);
+  }
+
+  private createCone() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const color = this.parseColor(this.currentConfig?.patternColor1, new Color3(1, 1, 1));
+    const cone = MeshBuilder.CreateCylinder("cone", { diameterTop: 0, diameterBottom: 2 * scale, height: 3 * scale, tessellation: 32 }, this.scene);
+    cone.parent = this.patternRoot;
+    const mat = new StandardMaterial("coneMat", this.scene);
+    mat.emissiveColor = color;
+    mat.disableLighting = true;
+    cone.material = mat;
+    this.currentMeshes.push(cone);
+  }
+
+  private createCluster() {
+    const config = this.currentConfig;
+    if (!config) return;
+
+    const count = config.clusterCount || 20;
+    const basePattern = config.clusterBasePattern || 'dot';
+    const scale = config.patternScale ?? 1.0;
+    const chaos = (config.clusterChaos ?? 50) / 100;
+
+    for (let i = 0; i < count; i++) {
+      const instanceRoot = new Mesh(`cluster_${i}`, this.scene);
+      instanceRoot.parent = this.patternRoot;
+      
+      // Disordered spawning with chaos control
+      const maxRadius = 15 * scale * (0.5 + chaos);
+      const radius = maxRadius * Math.sqrt(Math.random());
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+      
+      instanceRoot.position.set(
+        radius * Math.sin(phi) * Math.cos(theta),
+        radius * Math.sin(phi) * Math.sin(theta),
+        radius * Math.cos(phi)
+      );
+      
+      // Rotation chaos
+      instanceRoot.rotation.set(
+        Math.random() * Math.PI * 2 * chaos,
+        Math.random() * Math.PI * 2 * chaos,
+        Math.random() * Math.PI * 2 * chaos
+      );
+
+      // Store initial position for animations
+      instanceRoot.metadata = {
+        initialPos: instanceRoot.position.clone(),
+        randomOffset: Math.random() * Math.PI * 2,
+        randomSpeed: 0.5 + Math.random()
+      };
+
+      this.createFascinator(basePattern, instanceRoot);
+    }
+  }
+
+  private createDot() {
+    const scale = this.currentConfig?.patternScale ?? 1.0;
+    const color1 = this.parseColor(this.currentConfig?.patternColor1, new Color3(1, 1, 1));
+    const color2 = this.parseColor(this.currentConfig?.patternColor2, new Color3(1, 1, 0.8));
+
+    const dot = MeshBuilder.CreateSphere("dot", { diameter: 0.5 * scale }, this.scene);
+    dot.parent = this.patternRoot;
+    
+    const material = new StandardMaterial("dotMat", this.scene);
+    material.emissiveColor = color1;
+    material.disableLighting = true;
+    dot.material = material;
+
+    // Add a glow effect
+    const glow = MeshBuilder.CreateSphere("dotGlow", { diameter: 1.5 * scale }, this.scene);
+    glow.parent = dot;
+    const glowMat = new StandardMaterial("glowMat", this.scene);
+    glowMat.emissiveColor = color2;
+    glowMat.alpha = 0.3;
+    glowMat.disableLighting = true;
+    glow.material = glowMat;
+
+    this.currentMeshes.push(dot);
+    this.currentMeshes.push(glow);
   }
 
   private createMandala() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
     const type = this.currentConfig?.patternType || 'default';
+    const pattern = this.currentConfig?.pattern || 'mandala';
     
     const material = new StandardMaterial("mandalaMat", this.scene);
     material.emissiveColor = this.parseColor(this.currentConfig?.patternColor1, new Color3(1.0, 0.5, 0.2));
@@ -862,15 +1508,15 @@ export class SceneManager {
     material.alpha = 0.7;
 
     const layers = Math.floor(5 * complexity);
-    const pointsPerLayer = type === 'hypnotic' ? 16 : 8;
+    const pointsPerLayer = pattern === 'polygon' ? 6 : (type === 'hypnotic' ? 16 : 8);
 
     for (let l = 1; l <= layers; l++) {
       const radius = l * 2 * scale;
       const path = [];
       for (let i = 0; i <= pointsPerLayer; i++) {
         const angle = (i / pointsPerLayer) * Math.PI * 2;
-        // Add some star-like variation
-        const r = i % 2 === 0 ? radius : radius * 0.5;
+        // Add some star-like variation unless it's a simple polygon
+        const r = (pattern === 'polygon' || i % 2 === 0) ? radius : radius * 0.5;
         path.push(new Vector3(Math.cos(angle) * r, Math.sin(angle) * r, 0));
       }
       
@@ -879,8 +1525,8 @@ export class SceneManager {
       this.currentMeshes.push(lines);
       
       // Add a rotating torus for each layer
-      if (type === 'breathing') {
-        const torus = MeshBuilder.CreateTorus(`mandala_t_${l}`, { diameter: radius * 2, thickness: 0.05, tessellation: 32 }, this.scene);
+      if (type === 'breathing' || pattern === 'polygon') {
+        const torus = MeshBuilder.CreateTorus(`mandala_t_${l}`, { diameter: radius * 2, thickness: 0.05, tessellation: pointsPerLayer }, this.scene);
         torus.material = material;
         torus.rotation.x = Math.PI / 2;
         this.currentMeshes.push(torus);
@@ -891,18 +1537,24 @@ export class SceneManager {
   private createKaleidoscope() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const type = this.currentConfig?.patternType || 'default';
     
     const material = new StandardMaterial("kaleidoMat", this.scene);
     material.emissiveColor = this.parseColor(this.currentConfig?.patternColor1, new Color3(0.8, 0.2, 1.0));
     material.wireframe = true;
     material.alpha = 0.6;
 
-    const segments = Math.floor(8 * complexity);
     const baseShape = MeshBuilder.CreateCylinder("baseShape", { diameterTop: 0, diameterBottom: 4 * scale, height: 6 * scale, tessellation: 3 }, this.scene);
     baseShape.material = material;
     baseShape.rotation.x = Math.PI / 2;
     this.currentMeshes.push(baseShape);
 
+    // If it's a fascinator, just return the single object
+    if (type === 'fascinator') {
+      return;
+    }
+
+    const segments = Math.floor(8 * complexity);
     for (let i = 1; i < segments; i++) {
       const instance = baseShape.createInstance("k_" + i);
       instance.rotation.z = (i / segments) * Math.PI * 2;
@@ -987,26 +1639,137 @@ export class SceneManager {
     }
 
     const animSpeed = this.currentConfig.patternSpeed ?? 1.0;
-    const type = this.currentConfig.patternType || 'default';
+    const type = this.currentConfig.patternType || 'fascinator';
+    const pattern = this.currentConfig.pattern || 'flat spiral';
 
-    if (this.currentConfig.pattern === 'spiral' && this.currentMeshes.length > 0) {
+    if (type === 'repetition') {
+      const count = this.currentConfig.repetitionCount || 10;
+      const animation = this.currentConfig.repetitionAnimation || 'none';
+      const scale = this.currentConfig.patternScale ?? 1.0;
+      
+      const instances = this.patternRoot?.getChildren() || [];
+      instances.forEach((instance, i) => {
+        if (!(instance instanceof TransformNode)) return;
+        
+        if (animation === 'wave') {
+          instance.position.y += Math.sin(this.time * 2 * animSpeed + i * 0.5) * 0.05;
+        } else if (animation === 'pulse') {
+          const s = 1.0 + Math.sin(this.time * 3 * animSpeed + i * 0.2) * 0.2;
+          instance.scaling.set(s, s, s);
+        } else if (animation === 'random') {
+          instance.position.x += (Math.random() - 0.5) * 0.02 * animSpeed;
+          instance.position.y += (Math.random() - 0.5) * 0.02 * animSpeed;
+          instance.position.z += (Math.random() - 0.5) * 0.02 * animSpeed;
+        } else if (animation === 'snake') {
+          instance.position.z -= 0.1 * animSpeed;
+          if (instance.position.z < -10 * scale) {
+             instance.position.z = count * 5 * scale;
+          }
+        }
+      });
+    }
+
+    if (type === 'cluster') {
+      const animation = this.currentConfig.pattern || 'disordered';
+      const instances = this.patternRoot?.getChildren() || [];
+      instances.forEach((instance, i) => {
+        if (!(instance instanceof TransformNode)) return;
+        const metadata = instance.metadata || {};
+        const initialPos = metadata.initialPos || instance.position.clone();
+        const offset = metadata.randomOffset || 0;
+        const speed = metadata.randomSpeed || 1;
+
+        if (animation === 'float') {
+          instance.position.x = initialPos.x + Math.sin(this.time * 0.5 * animSpeed * speed + offset) * 2;
+          instance.position.y = initialPos.y + Math.cos(this.time * 0.4 * animSpeed * speed + offset) * 2;
+          instance.position.z = initialPos.z + Math.sin(this.time * 0.6 * animSpeed * speed + offset) * 2;
+        } else if (animation === 'orbit') {
+          const radius = initialPos.length();
+          const angle = this.time * 0.2 * animSpeed * speed + offset;
+          instance.position.x = Math.cos(angle) * radius;
+          instance.position.z = Math.sin(angle) * radius;
+          instance.lookAt(Vector3.Zero());
+        } else if (animation === 'pulse') {
+          const s = 1.0 + Math.sin(this.time * 2 * animSpeed * speed + offset) * 0.3;
+          instance.scaling.set(s, s, s);
+        } else if (animation === 'vortex') {
+          const radius = initialPos.length() * (1 + Math.sin(this.time * 0.5 * animSpeed) * 0.5);
+          const angle = this.time * 0.5 * animSpeed * speed + offset;
+          instance.position.x = Math.cos(angle) * radius;
+          instance.position.y = initialPos.y + Math.sin(this.time * animSpeed) * 5;
+          instance.position.z = Math.sin(angle) * radius;
+        }
+      });
+    }
+
+    if (type === 'cloud' && this.patternRoot) {
+      const animation = this.currentConfig.cloudAnimation || 'none';
+      const scale = this.currentConfig.patternScale ?? 1.0;
+      
+      if (animation === 'wave') {
+        this.patternRoot.position.y = Math.sin(this.time * 2 * animSpeed) * 5 * scale;
+        this.patternRoot.position.x = 0;
+        this.patternRoot.position.z = 0;
+        if (this.particleSystem) this.particleSystem.emitRate = this.baseEmitRate;
+      } else if (animation === 'pulse') {
+        if (this.particleSystem) {
+          this.particleSystem.emitRate = this.baseEmitRate * (1 + Math.sin(this.time * 3 * animSpeed) * 0.8);
+        }
+        this.patternRoot.position.set(0, 0, 0);
+      } else if (animation === 'random') {
+        this.patternRoot.position.x += (Math.random() - 0.5) * 0.5 * animSpeed * scale;
+        this.patternRoot.position.y += (Math.random() - 0.5) * 0.5 * animSpeed * scale;
+        this.patternRoot.position.z += (Math.random() - 0.5) * 0.5 * animSpeed * scale;
+        if (this.particleSystem) this.particleSystem.emitRate = this.baseEmitRate;
+      } else if (animation === 'snake') {
+        this.patternRoot.position.x = Math.sin(this.time * 2 * animSpeed) * 5 * scale;
+        this.patternRoot.position.z = Math.cos(this.time * 2 * animSpeed) * 5 * scale;
+        this.patternRoot.position.y = 0;
+        if (this.particleSystem) this.particleSystem.emitRate = this.baseEmitRate;
+      } else {
+        this.patternRoot.position.set(0, 0, 0);
+        if (this.particleSystem) this.particleSystem.emitRate = this.baseEmitRate;
+      }
+    }
+
+    if ((pattern === 'flat spiral' || pattern === 'spiral' || pattern === 'galaxy' || pattern === 'vortex' || pattern === 'nautilus spiral') && this.currentMeshes.length > 0) {
       this.currentMeshes.forEach((m, i) => {
         m.rotation.y += 0.01 * animSpeed;
-        if (type === 'breathing') {
+        if (type === 'breathing' || type === 'cloud') {
           const scale = 1 + Math.sin(this.time * 2 * animSpeed) * 0.2;
           m.scaling = new Vector3(scale, scale, scale);
         } else {
           m.rotation.x = Math.sin(this.time * 0.5 * animSpeed) * 0.2;
         }
       });
-    } else if (this.currentConfig.pattern === 'tunnel' && this.currentMeshes.length > 0) {
+    } else if (pattern === 'wheel') {
+      this.currentMeshes.forEach(m => {
+        if (m.name.includes("wheelRoot") || m.parent?.name.includes("wheelRoot")) {
+           m.rotation.z += 0.02 * animSpeed;
+        }
+      });
+    } else if (pattern === 'dial') {
+      this.currentMeshes.forEach(m => {
+        if (m.name === "hand") {
+          m.rotation.z -= 0.05 * animSpeed;
+        }
+      });
+    } else if (pattern === 'clock') {
+      this.currentMeshes.forEach(m => {
+        if (m.name === "hourHand") {
+          m.rotation.z -= 0.005 * animSpeed;
+        } else if (m.name === "minuteHand") {
+          m.rotation.z -= 0.06 * animSpeed;
+        }
+      });
+    } else if (pattern === 'tunnel' && this.currentMeshes.length > 0) {
       this.currentMeshes[0].rotation.y += 0.002 * animSpeed;
       if (this.currentConfig.camera === 'fly') {
         this.currentMeshes[0].position.z = Math.floor(this.camera.target.z / 2) * 2;
       } else {
         this.currentMeshes[0].position.z = 0;
       }
-    } else if (this.currentConfig.pattern === 'rings' || this.currentConfig.pattern === 'fractal') {
+    } else if (pattern === 'ring' || pattern === 'grid' || pattern === 'fractal' || pattern === 'orb') {
       this.currentMeshes.forEach((m, i) => {
         if (i > 0) { // Skip base mesh
           m.rotation.x += 0.01 * (i % 3 + 1) * animSpeed;
@@ -1014,20 +1777,20 @@ export class SceneManager {
           m.rotation.z += 0.015 * animSpeed;
         }
       });
-    } else if (this.currentConfig.pattern === 'mandala') {
+    } else if (pattern === 'mandala') {
       this.currentMeshes.forEach((m, i) => {
         m.rotation.z += (i % 2 === 0 ? 0.01 : -0.01) * animSpeed;
-        if (type === 'breathing') {
+        if (type === 'breathing' || type === 'cloud') {
           const scale = 1 + Math.sin(this.time * animSpeed + i) * 0.1;
           m.scaling = new Vector3(scale, scale, scale);
         }
       });
-    } else if (this.currentConfig.pattern === 'kaleidoscope') {
+    } else if (pattern === 'kaleido') {
       this.currentMeshes.forEach((m, i) => {
         m.rotation.x += 0.02 * animSpeed;
         m.rotation.y += 0.01 * animSpeed;
       });
-    } else if (this.currentConfig.pattern === 'waves' && this.currentMeshes.length > 0) {
+    } else if ((pattern === 'wave' || pattern === 'waves' || pattern === 'saddle' || pattern === 'plane' || pattern === 'random voxel surface' || pattern === 'random curved surface') && this.currentMeshes.length > 0) {
       const ground = this.currentMeshes[0];
       const positions = ground.getVerticesData(VertexBuffer.PositionKind);
       if (positions) {
@@ -1038,11 +1801,24 @@ export class SceneManager {
         }
         ground.updateVerticesData(VertexBuffer.PositionKind, positions);
       }
-    } else if (this.currentConfig.pattern === 'pulse') {
+    } else if (pattern === 'pulse' || pattern === 'pendulum') {
       this.currentMeshes.forEach((m, i) => {
         const scale = 1 + Math.sin(this.time * 3 * animSpeed - i) * 0.2;
         m.scaling = new Vector3(scale, scale, scale);
       });
+    } else if (pattern === 'dot' && this.currentMeshes.length >= 2) {
+      const dot = this.currentMeshes[0];
+      const glow = this.currentMeshes[1];
+      const twinkle = (Math.sin(this.time * 5 * animSpeed) * 0.5 + 0.5);
+      
+      const dotMat = dot.material as StandardMaterial;
+      const glowMat = glow.material as StandardMaterial;
+      
+      if (dotMat) dotMat.alpha = 0.5 + twinkle * 0.5;
+      if (glowMat) glowMat.alpha = 0.1 + twinkle * 0.4;
+      
+      const pulseScale = 0.9 + twinkle * 0.2;
+      dot.scaling.setAll(pulseScale);
     }
   }
 

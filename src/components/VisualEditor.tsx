@@ -2,8 +2,167 @@ import React, { useState, useRef, useEffect } from 'react';
 import { TimelineSegment, SegmentConfig, parseSegmentContent, MediaItem, PREBUILT_WORDLISTS } from '../timelineParser';
 import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2, Info, Bold, Italic, Heading1, Heading2, List, ListOrdered, Ear, Timer, Image, Tv, Volume2, Paintbrush, Film, X, Speech, Orbit, Activity, Camera, LayoutGrid, Grid, Layout, Link as LinkIcon, FileUp } from 'lucide-react';
 import { transcribeAudio } from '../services/audioAnalysisService';
-import ReactQuill from 'react-quill-new';
+import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
+
+// Helper for wordlist display
+const toSuperscript = (num: string) => {
+  const sups: any = { '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴', '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '.': '·' };
+  return num.split('').map(c => sups[c] || c).join('');
+};
+const toSubscript = (num: string) => {
+  const subs: any = { '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄', '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉' };
+  return num.split('').map(c => subs[c] || c).join('');
+};
+
+// Register custom blots to prevent Quill from stripping them
+const Embed = (Quill as any).import('blots/embed');
+
+class WordlistBlot extends Embed {
+  static blotName = 'wordlist';
+  static tagName = 'span';
+  static className = 'wordlist-marker';
+
+  static create(value: any) {
+    let node = super.create();
+    node.setAttribute('class', 'wordlist-marker');
+    node.setAttribute('contenteditable', 'false');
+    
+    let raw = '';
+    let display = '';
+
+    if (typeof value === 'string') {
+      raw = value;
+      // Parse for display
+      const match = raw.match(/!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/);
+      if (match) {
+        const [_, interval, count, words] = match;
+        const firstWord = words.split(',')[0].trim() || 'word';
+        display = `${firstWord}${toSuperscript(interval)}${toSubscript(count)}`;
+      }
+    } else if (value && typeof value === 'object') {
+      raw = value.raw || '';
+      display = value.display || '';
+    }
+
+    node.setAttribute('data-raw', raw);
+    node.setAttribute('data-display', display);
+    
+    // Styling
+    node.style.color = 'transparent';
+    node.style.fontSize = '0';
+    node.style.position = 'relative';
+    node.style.cursor = 'pointer';
+    node.style.display = 'inline-block';
+    node.style.verticalAlign = 'baseline';
+    
+    return node;
+  }
+
+  static value(node: any) {
+    return {
+      raw: node.getAttribute('data-raw'),
+      display: node.getAttribute('data-display')
+    };
+  }
+}
+(Quill as any).register(WordlistBlot);
+
+class ImageBlot extends Embed {
+  static blotName = 'image-marker';
+  static tagName = 'span';
+  static className = 'image-marker';
+
+  static create(value: any) {
+    let node = super.create();
+    node.setAttribute('class', 'image-marker');
+    node.setAttribute('contenteditable', 'false');
+    
+    let raw = '';
+    let display = '';
+
+    if (typeof value === 'string') {
+      raw = value;
+      const match = raw.match(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/);
+      if (match) {
+        const [_, opacity, volume, url] = match;
+        const filename = url.split('/').pop() || 'image';
+        display = `${filename}${toSuperscript(opacity)}${volume !== undefined ? toSubscript(volume) : ''}`;
+      }
+    } else if (value && typeof value === 'object') {
+      raw = value.raw || '';
+      display = value.display || '';
+    }
+
+    node.setAttribute('data-raw', raw);
+    node.setAttribute('data-display', display);
+    
+    node.style.color = 'transparent';
+    node.style.fontSize = '0';
+    node.style.position = 'relative';
+    node.style.cursor = 'pointer';
+    node.style.display = 'inline-block';
+    node.style.verticalAlign = 'baseline';
+    
+    return node;
+  }
+
+  static value(node: any) {
+    return {
+      raw: node.getAttribute('data-raw'),
+      display: node.getAttribute('data-display')
+    };
+  }
+}
+(Quill as any).register(ImageBlot);
+
+class VideoBlot extends Embed {
+  static blotName = 'video-marker';
+  static tagName = 'span';
+  static className = 'video-marker';
+
+  static create(value: any) {
+    let node = super.create();
+    node.setAttribute('class', 'video-marker');
+    node.setAttribute('contenteditable', 'false');
+    
+    let raw = '';
+    let display = '';
+
+    if (typeof value === 'string') {
+      raw = value;
+      const match = raw.match(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/);
+      if (match) {
+        const [_, opacity, volume, url] = match;
+        const filename = url.split('/').pop() || 'video';
+        display = `${filename}${toSuperscript(opacity)}${volume !== undefined ? toSubscript(volume) : ''}`;
+      }
+    } else if (value && typeof value === 'object') {
+      raw = value.raw || '';
+      display = value.display || '';
+    }
+
+    node.setAttribute('data-raw', raw);
+    node.setAttribute('data-display', display);
+    
+    node.style.color = 'transparent';
+    node.style.fontSize = '0';
+    node.style.position = 'relative';
+    node.style.cursor = 'pointer';
+    node.style.display = 'inline-block';
+    node.style.verticalAlign = 'baseline';
+    
+    return node;
+  }
+
+  static value(node: any) {
+    return {
+      raw: node.getAttribute('data-raw'),
+      display: node.getAttribute('data-display')
+    };
+  }
+}
+(Quill as any).register(VideoBlot);
 
 /**
  * VisualEditor
@@ -23,6 +182,7 @@ interface SegmentEditorProps {
   index: number;
   totalSegments: number;
   updateConfig: (index: number, key: keyof SegmentConfig, value: any) => void;
+  updateConfigs: (index: number, configs: Partial<SegmentConfig>) => void;
   updateMarkdown: (index: number, markdown: string) => void;
   moveSegment: (index: number, dir: number) => void;
   removeSegment: (index: number) => void;
@@ -63,9 +223,22 @@ const toHtml = (md: string) => {
     // Italic
     processed = processed.replace(/\*(.*?)\*/g, '<em>$1</em>');
     // Media
-    processed = processed.replace(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g, (match) => `<span style="color: #34d399;">${match}</span>`);
+    processed = processed.replace(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g, (match, opacity, volume, url) => {
+      const filename = url.split('/').pop() || (volume !== undefined ? 'video' : 'image');
+      const display = `${filename}${toSuperscript(opacity)}${volume !== undefined ? toSubscript(volume) : ''}`;
+      const escapedDisplay = display.replace(/"/g, '&quot;');
+      const escapedRaw = match.replace(/"/g, '&quot;');
+      const className = volume !== undefined ? 'video-marker' : 'image-marker';
+      return `<span class="${className}" data-display="${escapedDisplay}" data-raw="${escapedRaw}" contenteditable="false" style="color: transparent; font-size: 0; position: relative; cursor: pointer; display: inline-block; vertical-align: baseline;"></span>`;
+    });
     // Wordlist
-    processed = processed.replace(/!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g, (match) => `<span style="color: #34d399;">${match}</span>`);
+    processed = processed.replace(/!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g, (match, interval, count, words) => {
+      const firstWord = words.split(',')[0].trim() || 'word';
+      const display = `${firstWord}${toSuperscript(interval)}${toSubscript(count)}`;
+      const escapedDisplay = display.replace(/"/g, '&quot;');
+      const escapedRaw = match.replace(/"/g, '&quot;');
+      return `<span class="wordlist-marker" data-display="${escapedDisplay}" data-raw="${escapedRaw}" contenteditable="false" style="color: transparent; font-size: 0; position: relative; cursor: pointer; display: inline-block; vertical-align: baseline;"></span>`;
+    });
 
     // Block elements - don't wrap these in <p>
     if (processed.startsWith('# ')) {
@@ -86,6 +259,16 @@ const fromHtml = (html: string) => {
   if (!html || html === '<p><br></p>') return '';
   
   let md = html;
+
+  // Wordlists and Media - extract from data-raw
+  md = md.replace(/<span[^>]*class="(?:wordlist|image|video)-marker"[^>]*>.*?<\/span>/g, (match) => {
+    const rawMatch = match.match(/data-raw="([^"]+)"/);
+    if (rawMatch) {
+      return rawMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+    }
+    return '';
+  });
+
   // Replace non-breaking spaces with regular spaces
   md = md.replace(/&nbsp;/g, ' ');
   md = md.replace(/\u00A0/g, ' ');
@@ -147,12 +330,43 @@ const RichTextEditor = ({ markdown, onChange, onOpenMediaBubble, onOpenWordlistB
       const handleEditorChange = () => {
         setActiveFormats(quill.getFormat());
       };
+      
+      const handleEditorClick = (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+        const wordlistMarker = target.closest('.wordlist-marker');
+        if (wordlistMarker) {
+          const markers = Array.from(quill.root.querySelectorAll('.wordlist-marker'));
+          const index = markers.indexOf(wordlistMarker);
+          if (index !== -1) onOpenWordlistBubble(index);
+          return;
+        }
+
+        const imageMarker = target.closest('.image-marker');
+        if (imageMarker) {
+          const markers = Array.from(quill.root.querySelectorAll('.image-marker'));
+          const index = markers.indexOf(imageMarker);
+          if (index !== -1) onOpenMediaBubble('image', index);
+          return;
+        }
+
+        const videoMarker = target.closest('.video-marker');
+        if (videoMarker) {
+          const markers = Array.from(quill.root.querySelectorAll('.video-marker'));
+          const index = markers.indexOf(videoMarker);
+          if (index !== -1) onOpenMediaBubble('video', index);
+          return;
+        }
+      };
+
       quill.on('editor-change', handleEditorChange);
+      quill.root.addEventListener('click', handleEditorClick);
+      
       return () => {
         quill.off('editor-change', handleEditorChange);
+        quill.root.removeEventListener('click', handleEditorClick);
       };
     }
-  }, []);
+  }, [onOpenWordlistBubble]);
 
   const modules = React.useMemo(() => ({
     toolbar: `#${toolbarId}`
@@ -234,16 +448,38 @@ const RichTextEditor = ({ markdown, onChange, onOpenMediaBubble, onOpenWordlistB
     }
 
     const insertStr = type === 'wordlist' ? '!{1, 1}(word1,word2)' : (type === 'video' ? '![100,100]()' : '![100]()');
-    quill.insertText(range.index, insertStr, 'user');
-    
-    // Calculate index for the newly inserted item
-    const textBeforeInsert = quill.getText().substring(0, range.index);
-    if (type === 'image' || type === 'video') {
-      const mediaIndex = (textBeforeInsert.match(/!\[(\d+)(?:,(\d+))?\]\((.*?)\)/g) || []).length;
-      onOpenMediaBubble(type, mediaIndex);
-    } else {
-      const wordlistIndex = (textBeforeInsert.match(/!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g) || []).length;
-      onOpenWordlistBubble(wordlistIndex);
+    if (type === 'wordlist') {
+      quill.insertEmbed(range.index, 'wordlist', insertStr, 'user');
+      
+      // Calculate index for the newly inserted wordlist
+      let wordlistIndex = 0;
+      const delta = quill.getContents(0, range.index + 1);
+      delta.forEach((op: any) => {
+        if (op.insert && typeof op.insert === 'object' && op.insert.wordlist) {
+          wordlistIndex++;
+        }
+      });
+      onOpenWordlistBubble(wordlistIndex - 1);
+    } else if (type === 'image') {
+      quill.insertEmbed(range.index, 'image-marker', insertStr, 'user');
+      let imageIndex = 0;
+      const delta = quill.getContents(0, range.index + 1);
+      delta.forEach((op: any) => {
+        if (op.insert && typeof op.insert === 'object' && op.insert['image-marker']) {
+          imageIndex++;
+        }
+      });
+      onOpenMediaBubble('image', imageIndex - 1);
+    } else if (type === 'video') {
+      quill.insertEmbed(range.index, 'video-marker', insertStr, 'user');
+      let videoIndex = 0;
+      const delta = quill.getContents(0, range.index + 1);
+      delta.forEach((op: any) => {
+        if (op.insert && typeof op.insert === 'object' && op.insert['video-marker']) {
+          videoIndex++;
+        }
+      });
+      onOpenMediaBubble('video', videoIndex - 1);
     }
     
     // Only set selection if we're not opening a bubble that needs focus
@@ -332,6 +568,10 @@ const RichTextEditor = ({ markdown, onChange, onOpenMediaBubble, onOpenWordlistB
             }
           }}
           modules={modules}
+          formats={[
+            'header', 'bold', 'italic', 'blockquote', 'list', 'indent', 'link', 'image', 'video',
+            'wordlist', 'image-marker', 'video-marker'
+          ]}
           readOnly={readOnly}
           className="text-zinc-200"
         />
@@ -357,6 +597,58 @@ const RichTextEditor = ({ markdown, onChange, onOpenMediaBubble, onOpenWordlistB
         .ql-snow.ql-toolbar button:hover .ql-fill { fill: #fff; }
         .ql-snow.ql-toolbar button.ql-active .ql-stroke { stroke: #10b981; }
         .ql-snow.ql-toolbar button.ql-active .ql-fill { fill: #10b981; }
+        .ql-editor .wordlist-marker,
+        .ql-editor .image-marker,
+        .ql-editor .video-marker { 
+          display: inline-block; 
+          vertical-align: baseline; 
+          position: relative; 
+          color: transparent !important;
+          font-size: 0 !important;
+          cursor: pointer;
+          user-select: none;
+          margin: 0 2px;
+        }
+        .ql-editor .wordlist-marker::after,
+        .ql-editor .image-marker::after,
+        .ql-editor .video-marker::after { 
+          content: attr(data-display); 
+          font-size: 13px; 
+          line-height: 1.2; 
+          color: #10b981; 
+          background: rgba(16, 185, 129, 0.15);
+          padding: 0 4px;
+          border-radius: 4px;
+          border: 1px solid rgba(16, 185, 129, 0.3);
+          display: inline-block; 
+          vertical-align: middle; 
+          pointer-events: none; 
+          visibility: visible;
+        }
+        .ql-editor .image-marker::after {
+          color: #60a5fa;
+          background: rgba(96, 165, 250, 0.15);
+          border-color: rgba(96, 165, 250, 0.3);
+        }
+        .ql-editor .video-marker::after {
+          color: #f472b6;
+          background: rgba(244, 114, 182, 0.15);
+          border-color: rgba(244, 114, 182, 0.3);
+        }
+        .ql-editor .wordlist-marker:hover::after,
+        .ql-editor .image-marker:hover::after,
+        .ql-editor .video-marker:hover::after {
+          background: rgba(16, 185, 129, 0.25);
+          border-color: rgba(16, 185, 129, 0.5);
+        }
+        .ql-editor .image-marker:hover::after {
+          background: rgba(96, 165, 250, 0.25);
+          border-color: rgba(96, 165, 250, 0.5);
+        }
+        .ql-editor .video-marker:hover::after {
+          background: rgba(244, 114, 182, 0.25);
+          border-color: rgba(244, 114, 182, 0.5);
+        }
       `}</style>
     </div>
   );
@@ -423,13 +715,27 @@ const CompactUrlPicker = ({ url, onChange, placeholder = "URL", autoFocus = fals
  * 
  * A sub-component for editing a single segment within the VisualEditor.
  */
-function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown, moveSegment, removeSegment }: SegmentEditorProps) {
+function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs, updateMarkdown, moveSegment, removeSegment }: SegmentEditorProps) {
+  const getValidPattern = (type: string | undefined, current: string | undefined) => {
+    const valid: Record<string, string[]> = {
+      fascinator: ['fractal', 'mandala', 'flame', 'dot', 'flat spiral', 'pendulum', 'wheel', 'dial', 'clock', 'torus', 'cone', 'ring', 'kaleido'],
+      repetition: ['grid', 'march', 'helix', 'spiral', 'vortex', 'sphere', 'cube', 'polygon'],
+      cloud: ['particle', 'nebula', 'smoke', 'fluid', 'swarm', 'constellation', 'bubbles'],
+      cluster: ['disordered', 'float', 'orbit', 'pulse', 'vortex'],
+      topology: ['pulse', 'tunnel', 'wave', 'nautilus spiral', 'orb', 'saddle', 'plane', 'random voxel surface', 'random curved surface', 'galaxy']
+    };
+    const typeKey = type || 'fascinator';
+    if (current && valid[typeKey]?.includes(current)) return current;
+    return valid[typeKey]?.[0] || 'flat spiral';
+  };
+
   const [activeBubble, setActiveBubble] = useState<{ 
     type: 'style' | 'animation' | 'speech' | 'binaural' | 'audio' | 'metronome' | 'pattern' | 'camera' | 'anim_config' | 'image' | 'video' | 'wordlist', 
     isAux?: boolean,
     index?: number
   } | null>(null);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcribeProgress, setTranscribeProgress] = useState('');
   const bubbleRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -438,16 +744,6 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
     // Use native listener on the bubble to stop propagation to document
     // This is more reliable for preventing handleClickOutside from firing
     const bubble = bubbleRef.current;
-    const stopPropagation = (e: Event) => {
-      e.stopPropagation();
-    };
-
-    if (bubble) {
-      bubble.addEventListener('mousedown', stopPropagation);
-      bubble.addEventListener('mouseup', stopPropagation);
-      bubble.addEventListener('click', stopPropagation);
-      bubble.addEventListener('focusin', stopPropagation);
-    }
 
     const handleClickOutside = (event: MouseEvent) => {
       if (bubbleRef.current && !bubbleRef.current.contains(event.target as Node)) {
@@ -464,12 +760,6 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
-      if (bubble) {
-        bubble.removeEventListener('mousedown', stopPropagation);
-        bubble.removeEventListener('mouseup', stopPropagation);
-        bubble.removeEventListener('click', stopPropagation);
-        bubble.removeEventListener('focusin', stopPropagation);
-      }
       document.removeEventListener('mousedown', handleClickOutside);
     };
   }, [activeBubble]);
@@ -507,7 +797,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
     updateMarkdown(index, replaceMediaInMarkdown(seg.rawMarkdown, mediaIndex, null));
   };
 
-  const wordlistRegex = /!\{([\d.]+),\s*(\d+)\}\(([^)]+)\)/g;
+  const wordlistRegex = /!\{\s*([\d.]+)\s*,\s*(\d+)\s*\}\(([^)]+)\)/g;
   const wordlists: { interval: number; count: number; words: string }[] = [];
   let wlMatch;
   while ((wlMatch = wordlistRegex.exec(seg.rawMarkdown)) !== null) {
@@ -547,12 +837,14 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
   const handleTranscribe = async () => {
     if (!seg.config.audioUrl) return;
     setIsTranscribing(true);
+    setTranscribeProgress('Initializing...');
     try {
-      const text = await transcribeAudio(seg.config.audioUrl);
+      const text = await transcribeAudio(seg.config.audioUrl, setTranscribeProgress);
       // Append transcribed text to rawMarkdown
       updateMarkdown(index, seg.rawMarkdown + '\n' + text);
     } finally {
       setIsTranscribing(false);
+      setTranscribeProgress('');
     }
   };
 
@@ -633,10 +925,6 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
         {activeBubble && (
           <div 
             ref={bubbleRef}
-            onMouseDown={(e) => e.stopPropagation()}
-            onMouseUp={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-            onFocus={(e) => e.stopPropagation()}
             data-bubble-container="true"
             className="absolute top-12 right-0 z-50 w-80 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200"
           >
@@ -671,7 +959,6 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
               <button 
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  e.stopPropagation();
                 }} 
                 onClick={() => setActiveBubble(null)} 
                 className="p-1 text-zinc-500 hover:text-white transition-colors"
@@ -723,6 +1010,12 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                       <option value="solid">Solid</option>
                     </select>
                   </div>
+                  <SliderInput
+                    label="Outline Width"
+                    min={0} max={50} step={1}
+                    value={(activeBubble.isAux ? seg.config.auxOutlineWidth : seg.config.textOutlineWidth) ?? 8}
+                    onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxOutlineWidth' : 'textOutlineWidth', val)}
+                  />
                   <div className="flex flex-col gap-1">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Color</label>
                     <input 
@@ -892,10 +1185,16 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                         onMouseDown={(e) => e.stopPropagation()}
                         disabled={!seg.config.audioUrl || isTranscribing}
                         className="p-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 border border-zinc-700 rounded-lg text-emerald-400 transition-colors"
+                        title="Transcribe Audio"
                       >
                         {isTranscribing ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
                       </button>
                     </div>
+                    {isTranscribing && transcribeProgress && (
+                      <div className="text-[10px] text-emerald-400 mt-1 animate-pulse">
+                        {transcribeProgress}
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label 
@@ -922,33 +1221,170 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
               ) : activeBubble.type === 'pattern' ? (
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
-                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern</label>
-                    <select value={seg.config.pattern} onChange={(e) => updateConfig(index, 'pattern', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                      <option value="spiral">Spiral</option>
-                      <option value="tunnel">Tunnel</option>
-                      <option value="rings">Rings</option>
-                      <option value="particles">Particles</option>
-                      <option value="mandala">Mandala</option>
-                      <option value="kaleidoscope">Kaleidoscope</option>
-                      <option value="waves">Waves</option>
-                      <option value="pulse">Pulse</option>
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern Type</label>
+                    <select value={seg.config.patternType || 'fascinator'} onChange={(e) => {
+                      const newType = e.target.value;
+                      let defaultPattern = 'flat spiral';
+                      if (newType === 'repetition') defaultPattern = 'grid';
+                      else if (newType === 'cloud') defaultPattern = 'particle';
+                      else if (newType === 'cluster') defaultPattern = 'disordered';
+                      else if (newType === 'topology') defaultPattern = 'pulse';
+                      
+                      updateConfigs(index, {
+                        patternType: newType,
+                        pattern: defaultPattern
+                      });
+                    }} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                      <option value="fascinator">Fascinator</option>
+                      <option value="repetition">Repetition</option>
+                      <option value="cloud">Cloud</option>
+                      <option value="cluster">Cluster</option>
+                      <option value="topology">Topology</option>
                     </select>
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
-                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern Type</label>
-                    <select value={seg.config.patternType || 'default'} onChange={(e) => updateConfig(index, 'patternType', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                      <option value="default">Default</option>
-                      <option value="double">Double (Spiral)</option>
-                      <option value="galaxy">Galaxy (Spiral)</option>
-                      <option value="sphere">Sphere (Rings)</option>
-                      <option value="cylinder">Cylinder (Rings)</option>
-                      <option value="hypnotic">Hypnotic</option>
-                      <option value="breathing">Breathing</option>
-                      <option value="infinite">Infinite</option>
-                      <option value="vortex">Vortex</option>
-                      <option value="sacred_geometry">Sacred Geometry</option>
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern</label>
+                    <select value={getValidPattern(seg.config.patternType, seg.config.pattern)} onChange={(e) => updateConfig(index, 'pattern', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                      {(seg.config.patternType === 'fascinator' || !seg.config.patternType) && (
+                        <>
+                          <option value="fractal">Fractal</option>
+                          <option value="mandala">Mandala</option>
+                          <option value="flame">Flame</option>
+                          <option value="dot">Dot</option>
+                          <option value="flat spiral">Flat Spiral</option>
+                          <option value="pendulum">Pendulum</option>
+                          <option value="wheel">Wheel</option>
+                          <option value="dial">Dial</option>
+                          <option value="clock">Clock</option>
+                          <option value="torus">Torus</option>
+                          <option value="cone">Cone</option>
+                          <option value="ring">Ring</option>
+                          <option value="kaleido">Kaleido</option>
+                        </>
+                      )}
+                      {seg.config.patternType === 'repetition' && (
+                        <>
+                          <option value="grid">Grid</option>
+                          <option value="march">March</option>
+                          <option value="helix">Helix</option>
+                          <option value="spiral">Spiral</option>
+                          <option value="vortex">Vortex</option>
+                          <option value="sphere">Sphere</option>
+                          <option value="cube">Cube</option>
+                          <option value="polygon">Polygon</option>
+                        </>
+                      )}
+                      {seg.config.patternType === 'cloud' && (
+                        <>
+                          <option value="particle">Particle</option>
+                          <option value="nebula">Nebula</option>
+                          <option value="smoke">Smoke</option>
+                          <option value="fluid">Fluid</option>
+                          <option value="swarm">Swarm</option>
+                          <option value="constellation">Constellation</option>
+                          <option value="bubbles">Bubbles</option>
+                        </>
+                      )}
+                      {seg.config.patternType === 'cluster' && (
+                        <>
+                          <option value="disordered">Disordered</option>
+                          <option value="float">Float</option>
+                          <option value="orbit">Orbit</option>
+                          <option value="pulse">Pulse</option>
+                          <option value="vortex">Vortex</option>
+                        </>
+                      )}
+                      {seg.config.patternType === 'topology' && (
+                        <>
+                          <option value="pulse">Pulse</option>
+                          <option value="tunnel">Tunnel</option>
+                          <option value="wave">Wave</option>
+                          <option value="nautilus spiral">Nautilus Spiral</option>
+                          <option value="orb">Orb</option>
+                          <option value="saddle">Saddle</option>
+                          <option value="plane">Plane</option>
+                          <option value="random voxel surface">Random Voxel Surface</option>
+                          <option value="random curved surface">Random Curved Surface</option>
+                          <option value="galaxy">Galaxy</option>
+                        </>
+                      )}
                     </select>
                   </div>
+                  {seg.config.patternType === 'repetition' && (
+                    <>
+                      <div className="flex flex-col gap-1 col-span-2">
+                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Base Fascinator</label>
+                        <select value={seg.config.repetitionBasePattern || 'dot'} onChange={(e) => updateConfig(index, 'repetitionBasePattern', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                          <option value="fractal">Fractal</option>
+                          <option value="mandala">Mandala</option>
+                          <option value="particle">Particle</option>
+                          <option value="flame">Flame</option>
+                          <option value="dot">Dot</option>
+                          <option value="flat spiral">Flat Spiral</option>
+                          <option value="pendulum">Pendulum</option>
+                          <option value="wheel">Wheel</option>
+                          <option value="dial">Dial</option>
+                          <option value="clock">Clock</option>
+                          <option value="torus">Torus</option>
+                          <option value="cone">Cone</option>
+                          <option value="ring">Ring</option>
+                          <option value="kaleido">Kaleido</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1 col-span-1">
+                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Count</label>
+                        <input type="number" value={seg.config.repetitionCount || 10} onChange={(e) => updateConfig(index, 'repetitionCount', parseInt(e.target.value))} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                      </div>
+                    </>
+                  )}
+                  {seg.config.patternType === 'cluster' && (
+                    <>
+                      <div className="flex flex-col gap-1 col-span-2">
+                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Base Fascinator</label>
+                        <select value={seg.config.clusterBasePattern || 'dot'} onChange={(e) => updateConfig(index, 'clusterBasePattern', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                          <option value="fractal">Fractal</option>
+                          <option value="mandala">Mandala</option>
+                          <option value="particle">Particle</option>
+                          <option value="flame">Flame</option>
+                          <option value="dot">Dot</option>
+                          <option value="flat spiral">Flat Spiral</option>
+                          <option value="pendulum">Pendulum</option>
+                          <option value="wheel">Wheel</option>
+                          <option value="dial">Dial</option>
+                          <option value="clock">Clock</option>
+                          <option value="torus">Torus</option>
+                          <option value="cone">Cone</option>
+                          <option value="ring">Ring</option>
+                          <option value="kaleido">Kaleido</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1 col-span-1">
+                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Count</label>
+                        <input type="number" value={seg.config.clusterCount || 20} onChange={(e) => updateConfig(index, 'clusterCount', parseInt(e.target.value))} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                      </div>
+                      <div className="flex flex-col gap-1 col-span-1">
+                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Chaos</label>
+                        <input type="range" min="0" max="100" value={seg.config.clusterChaos || 50} onChange={(e) => updateConfig(index, 'clusterChaos', parseInt(e.target.value))} onMouseDown={(e) => e.stopPropagation()} className="accent-emerald-500" />
+                      </div>
+                    </>
+                  )}
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 1</label>
+                    <div className="flex gap-2">
+                      <input type="color" value={seg.config.patternColor1 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
+                      <input type="text" value={seg.config.patternColor1 || ''} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
+                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 2</label>
+                    <div className="flex gap-2">
+                      <input type="color" value={seg.config.patternColor2 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
+                      <input type="text" value={seg.config.patternColor2 || ''} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
+                    </div>
+                  </div>
+                </>
+              ) : activeBubble.type === 'anim_config' ? (
+                <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Face Camera</label>
                     <select value={seg.config.patternFaceCamera === undefined ? 'true' : (seg.config.patternFaceCamera ? 'true' : 'false')} onChange={(e) => updateConfig(index, 'patternFaceCamera', e.target.value === 'true')} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
@@ -956,9 +1392,30 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                       <option value="true">On</option>
                     </select>
                   </div>
-                </>
-              ) : activeBubble.type === 'anim_config' ? (
-                <>
+                  {seg.config.patternType === 'repetition' && (
+                    <div className="flex flex-col gap-1 col-span-2">
+                      <label className="text-[10px] text-zinc-500 uppercase font-bold">Repetition Animation</label>
+                      <select value={seg.config.repetitionAnimation || 'none'} onChange={(e) => updateConfig(index, 'repetitionAnimation', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                        <option value="none">None</option>
+                        <option value="wave">Wave</option>
+                        <option value="pulse">Pulse</option>
+                        <option value="random">Random</option>
+                        <option value="snake">Snake</option>
+                      </select>
+                    </div>
+                  )}
+                  {seg.config.patternType === 'cloud' && (
+                    <div className="flex flex-col gap-1 col-span-2">
+                      <label className="text-[10px] text-zinc-500 uppercase font-bold">Cloud Animation</label>
+                      <select value={seg.config.cloudAnimation || 'none'} onChange={(e) => updateConfig(index, 'cloudAnimation', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                        <option value="none">None</option>
+                        <option value="wave">Wave</option>
+                        <option value="pulse">Pulse</option>
+                        <option value="random">Random</option>
+                        <option value="snake">Snake</option>
+                      </select>
+                    </div>
+                  )}
                   <div className="col-span-2">
                     <SliderInput
                       label="Pattern Speed"
@@ -988,20 +1445,6 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateMarkdown
                       value={seg.config.patternComplexity ?? 1}
                       onChange={(val) => updateConfig(index, 'patternComplexity', val)}
                     />
-                  </div>
-                  <div className="flex flex-col gap-1 col-span-2">
-                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 1</label>
-                    <div className="flex gap-2">
-                      <input type="color" value={seg.config.patternColor1 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
-                      <input type="text" value={seg.config.patternColor1 || ''} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-1 col-span-2">
-                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 2</label>
-                    <div className="flex gap-2">
-                      <input type="color" value={seg.config.patternColor2 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
-                      <input type="text" value={seg.config.patternColor2 || ''} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
-                    </div>
                   </div>
                 </>
               ) : activeBubble.type === 'camera' ? (
@@ -1239,6 +1682,18 @@ export function VisualEditor({ segments, onChange }: VisualEditorProps) {
     onChange(newSegments);
   };
 
+  const updateConfigs = (index: number, configs: Partial<SegmentConfig>) => {
+    const newSegments = [...segments];
+    newSegments[index] = {
+      ...newSegments[index],
+      config: {
+        ...newSegments[index].config,
+        ...configs
+      }
+    };
+    onChange(newSegments);
+  };
+
   const updateMarkdown = (index: number, markdown: string) => {
     const newSegments = [...segments];
     const parsedContent = parseSegmentContent(markdown);
@@ -1247,8 +1702,7 @@ export function VisualEditor({ segments, onChange }: VisualEditorProps) {
       rawMarkdown: markdown,
       text: parsedContent.text,
       auxText: parsedContent.auxText,
-      media: parsedContent.media,
-      wordList: parsedContent.wordList
+      media: parsedContent.media
     };
     onChange(newSegments);
   };
@@ -1257,8 +1711,8 @@ export function VisualEditor({ segments, onChange }: VisualEditorProps) {
     const newSegments = [...segments];
     const lastConfig = segments.length > 0 ? segments[segments.length - 1].config : {
       duration: 10,
-      pattern: 'spiral',
-      patternType: 'default',
+      patternType: 'fascinator',
+      pattern: 'flat spiral',
       camera: 'static',
       cameraSpeed: 1.0,
       binaural: 'off',
@@ -1272,8 +1726,7 @@ export function VisualEditor({ segments, onChange }: VisualEditorProps) {
       rawMarkdown: newText,
       text: parsedContent.text,
       auxText: parsedContent.auxText,
-      media: parsedContent.media,
-      wordList: parsedContent.wordList
+      media: parsedContent.media
     });
     onChange(newSegments);
   };
@@ -1302,6 +1755,7 @@ export function VisualEditor({ segments, onChange }: VisualEditorProps) {
           index={index}
           totalSegments={segments.length}
           updateConfig={updateConfig}
+          updateConfigs={updateConfigs}
           updateMarkdown={updateMarkdown}
           moveSegment={moveSegment}
           removeSegment={removeSegment}
