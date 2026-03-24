@@ -12,17 +12,29 @@
 export interface SegmentConfig {
   duration: number; // in seconds
   patternType: 'fascinator' | 'repetition' | 'cloud' | 'cluster' | 'topology' | string;
-  pattern: 'fractal' | 'mandala' | 'particle' | 'flame' | 'dot' | 'flat spiral' | 'pendulum' | 'tunnel' | 'ring' | 'kaleido' | 'pulse' | 'wave' | 'nautilus spiral' | 'orb' | 'saddle' | 'plane' | 'random voxel surface' | 'random curved surface' | string;
+  pattern: 'fractal' | 'mandala' | 'particle' | 'flame' | 'dot' | 'flat spiral' | 'cone spiral' | 'pendulum' | 'tunnel' | 'ring' | 'kaleido' | 'pulse' | 'wave' | 'nautilus spiral' | 'orb' | 'saddle' | 'plane' | 'random voxel surface' | 'random curved surface' | string;
   patternSpeed?: number;
   patternScale?: number;
   patternComplexity?: number;
+  palette?: string[];
   patternColor1?: string;
   patternColor2?: string;
   patternFaceCamera?: boolean;
+  spiralArms?: number;
+  spiralThickness?: number;
+  spiralCurvature?: number;
+  spiralElasticity?: number;
+  patternSpin?: number;
+  patternRotation?: number;
+  patternTumble?: number;
+  baseSpin?: number;
+  baseRotation?: number;
+  baseTumble?: number;
   camera: 'orbit' | 'fly' | 'static' | 'pan' | string;
   cameraSpeed?: number;
   cameraRadius?: number;
   cameraHeight?: number;
+  cameraAlpha?: number;
   cameraTargetX?: number;
   cameraTargetY?: number;
   cameraTargetZ?: number;
@@ -70,6 +82,8 @@ export interface SegmentConfig {
   clusterBasePattern?: string;
   clusterChaos?: number;
   cloudAnimation?: 'none' | 'wave' | 'pulse' | 'random' | 'snake' | string;
+  topologyAmplitude?: number;
+  topologyFrequency?: number;
 }
 
 export interface MediaItem {
@@ -105,13 +119,25 @@ const KEY_MAP: Record<string, string> = {
   patternSpeed: 'ps',
   patternScale: 'psc',
   patternComplexity: 'pc',
+  palette: 'pal',
   patternColor1: 'c1',
   patternColor2: 'c2',
   patternFaceCamera: 'pfc',
+  spiralArms: 'sa',
+  spiralThickness: 'st',
+  spiralCurvature: 'sc',
+  spiralElasticity: 'se',
+  patternSpin: 'psn',
+  patternRotation: 'prt',
+  patternTumble: 'ptm',
+  baseSpin: 'bsn',
+  baseRotation: 'brt',
+  baseTumble: 'btm',
   camera: 'ca',
   cameraSpeed: 'cs',
   cameraRadius: 'cr',
   cameraHeight: 'ch',
+  cameraAlpha: 'caA',
   cameraTargetX: 'tx',
   cameraTargetY: 'ty',
   cameraTargetZ: 'tz',
@@ -158,7 +184,9 @@ const KEY_MAP: Record<string, string> = {
   clusterCount: 'cc',
   clusterBasePattern: 'cbp',
   clusterChaos: 'cch',
-  cloudAnimation: 'cla'
+  cloudAnimation: 'cla',
+  topologyAmplitude: 'ta',
+  topologyFrequency: 'tf'
 };
 
 const VALUE_MAP: Record<string, string> = {
@@ -232,7 +260,7 @@ const VALUE_MAP: Record<string, string> = {
   dial: 'di',
   clock: 'cl',
   torus: 'tor',
-  cone: 'con'
+  'cone spiral': 'cs'
 };
 
 export const DEFAULT_MARKDOWN = `# Welcome to Perfect Cadence
@@ -245,7 +273,11 @@ Separate segments with three dashes (---).
 duration: 10
 patternType: fascinator
 pattern: flat spiral
-camera: orbit
+camera: static
+cameraHeight: 1.57
+cameraAlpha: -1.57
+cameraRadius: 30
+palette: #ffffff,#00ff88,#0066ff
 \`\`\`
 
 ---
@@ -256,7 +288,8 @@ You can change the visuals per segment.
 \`\`\`config
 patternType: cluster
 pattern: particle
-camera: fly
+camera: static
+palette: #ff0088,#ff8800,#ffff00
 \`\`\`
 `;
 
@@ -328,10 +361,14 @@ export const SYNTAX_DOCS = {
     patternColor1: "string (hex color)",
     patternColor2: "string (hex color)",
     patternFaceCamera: "boolean",
+    spiralArms: "number",
+    spiralThickness: "number",
+    spiralCurvature: "number",
     camera: "string (orbit, fly, static, pan)",
     cameraSpeed: "number (multiplier)",
     cameraRadius: "number (distance from target)",
     cameraHeight: "number (beta angle in radians)",
+    cameraAlpha: "number (alpha angle in radians)",
     cameraTargetX: "number",
     cameraTargetY: "number",
     cameraTargetZ: "number",
@@ -392,12 +429,15 @@ export function parseTimeline(markdown: string): TimelineSegment[] {
     camera: 'static',
     cameraSpeed: 1.0,
     cameraRadius: 30,
+    cameraHeight: 1.57,
+    cameraAlpha: -1.57,
     textSize: 20,
     textDistance: 25,
     auxSize: 15,
     auxDistance: 25,
     binaural: 'off',
     metronome: 0,
+    palette: ['#ffffff', '#00ff88', '#0066ff']
   };
 
   parts.forEach((part, index) => {
@@ -414,10 +454,12 @@ export function parseTimeline(markdown: string): TimelineSegment[] {
         if (key && valueParts.length > 0) {
           const val = valueParts.join(':').trim();
           const k = key.trim() as keyof SegmentConfig;
-          if (k === 'duration' || k === 'metronome' || k === 'carrierFreq' || k === 'beatFreq' || k === 'ampModulation' || k === 'cameraSpeed' || k === 'patternSpeed' || k === 'patternScale' || k === 'patternComplexity' || k === 'cameraRadius' || k === 'cameraHeight' || k === 'cameraTargetX' || k === 'cameraTargetY' || k === 'cameraTargetZ' || k === 'cameraFov' || k === 'textDistance' || k === 'textSize' || k === 'textAnimSpeed' || k === 'textAnimIntensity' || k === 'auxDistance' || k === 'auxSize' || k === 'auxAnimSpeed' || k === 'auxAnimIntensity' || k === 'speech_speed') {
+          if (k === 'duration' || k === 'metronome' || k === 'carrierFreq' || k === 'beatFreq' || k === 'ampModulation' || k === 'cameraSpeed' || k === 'patternSpeed' || k === 'patternScale' || k === 'patternComplexity' || k === 'cameraRadius' || k === 'cameraHeight' || k === 'cameraAlpha' || k === 'cameraTargetX' || k === 'cameraTargetY' || k === 'cameraTargetZ' || k === 'cameraFov' || k === 'textDistance' || k === 'textSize' || k === 'textAnimSpeed' || k === 'textAnimIntensity' || k === 'auxDistance' || k === 'auxSize' || k === 'auxAnimSpeed' || k === 'auxAnimIntensity' || k === 'speech_speed' || k === 'repetitionCount' || k === 'clusterCount' || k === 'clusterChaos' || k === 'textOutlineWidth' || k === 'auxOutlineWidth' || k === 'topologyAmplitude' || k === 'topologyFrequency' || k === 'spiralArms' || k === 'spiralThickness' || k === 'spiralCurvature' || k === 'spiralElasticity' || k === 'patternSpin' || k === 'patternRotation' || k === 'patternTumble' || k === 'baseSpin' || k === 'baseRotation' || k === 'baseTumble') {
             (config as any)[k] = parseFloat(val);
           } else if (k === 'textShading' || k === 'textBackdrop' || k === 'auxShading' || k === 'auxBackdrop' || k === 'speech_synth' || k === 'patternFaceCamera' || k === 'textFaceCamera') {
             (config as any)[k] = val === 'true';
+          } else if (k === 'palette') {
+            (config as any)[k] = val.split(',').map(c => c.trim());
           } else {
             (config as any)[k] = val;
           }
@@ -460,11 +502,15 @@ export function serializeTimeline(segments: TimelineSegment[]): string {
     let configStr = '';
     const c = seg.config as any;
     
-    const keys = ['duration', 'pattern', 'patternType', 'repetitionCount', 'repetitionBasePattern', 'repetitionAnimation', 'clusterCount', 'clusterBasePattern', 'clusterChaos', 'cloudAnimation', 'patternSpeed', 'patternScale', 'patternComplexity', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textOutlineWidth', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxOutlineWidth', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
+    const keys = ['duration', 'pattern', 'patternType', 'repetitionCount', 'repetitionBasePattern', 'repetitionAnimation', 'clusterCount', 'clusterBasePattern', 'clusterChaos', 'cloudAnimation', 'topologyAmplitude', 'topologyFrequency', 'patternSpeed', 'patternScale', 'patternComplexity', 'palette', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'spiralArms', 'spiralThickness', 'spiralCurvature', 'spiralElasticity', 'patternSpin', 'patternRotation', 'patternTumble', 'baseSpin', 'baseRotation', 'baseTumble', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraAlpha', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textOutlineWidth', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxOutlineWidth', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
     
     for (const key of keys) {
       if (c[key] !== undefined && (index === 0 || c[key] !== (lastConfig as any)[key])) {
-        configStr += `${key}: ${c[key]}\n`;
+        if (key === 'palette' && Array.isArray(c[key])) {
+          configStr += `${key}: ${c[key].join(',')}\n`;
+        } else {
+          configStr += `${key}: ${c[key]}\n`;
+        }
       }
     }
     
@@ -495,12 +541,16 @@ export function minifyMarkdown(markdown: string): string {
     
     let configStr = '';
     const c = seg.config as any;
-    const keys = ['duration', 'pattern', 'patternType', 'repetitionCount', 'repetitionBasePattern', 'repetitionAnimation', 'clusterCount', 'clusterBasePattern', 'clusterChaos', 'cloudAnimation', 'patternSpeed', 'patternScale', 'patternComplexity', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textOutlineWidth', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxOutlineWidth', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
+    const keys = ['duration', 'pattern', 'patternType', 'repetitionCount', 'repetitionBasePattern', 'repetitionAnimation', 'clusterCount', 'clusterBasePattern', 'clusterChaos', 'cloudAnimation', 'topologyAmplitude', 'topologyFrequency', 'patternSpeed', 'patternScale', 'patternComplexity', 'palette', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'spiralArms', 'spiralThickness', 'spiralCurvature', 'spiralElasticity', 'patternSpin', 'patternRotation', 'patternTumble', 'baseSpin', 'baseRotation', 'baseTumble', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraAlpha', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textOutlineWidth', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxOutlineWidth', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
     
     for (const key of keys) {
       if (c[key] !== undefined && (index === 0 || c[key] !== (lastConfig as any)[key])) {
         const minKey = KEY_MAP[key] || key;
-        const minVal = VALUE_MAP[c[key]] || c[key];
+        let val = c[key];
+        if (key === 'palette' && Array.isArray(val)) {
+          val = val.join(',');
+        }
+        const minVal = VALUE_MAP[val] || val;
         configStr += `${minKey}:${minVal}\n`;
       }
     }

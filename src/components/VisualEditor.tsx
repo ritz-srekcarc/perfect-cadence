@@ -207,6 +207,47 @@ const SliderInput = ({ label, value, min, max, step, onChange }: { label: string
   </div>
 );
 
+const PaletteManager = ({ palette, onChange }: { palette: string[], onChange: (newPalette: string[]) => void }) => {
+  const addColor = () => onChange([...palette, '#ffffff']);
+  const removeColor = (index: number) => onChange(palette.filter((_, i) => i !== index));
+  const updateColor = (index: number, color: string) => {
+    const newPalette = [...palette];
+    newPalette[index] = color;
+    onChange(newPalette);
+  };
+
+  return (
+    <div className="flex flex-col gap-2" onMouseDown={(e) => e.stopPropagation()}>
+      <label className="text-[10px] text-zinc-500 uppercase tracking-wider font-semibold">Palette</label>
+      <div className="flex flex-wrap gap-2">
+        {palette.map((color, i) => (
+          <div key={i} className="flex items-center gap-1 bg-zinc-900 border border-zinc-800 rounded-lg p-1">
+            <input 
+              type="color" 
+              value={color} 
+              onChange={(e) => updateColor(i, e.target.value)}
+              className="w-6 h-6 bg-transparent border-none cursor-pointer p-0"
+            />
+            <button 
+              onClick={() => removeColor(i)}
+              className="text-zinc-500 hover:text-red-400 transition-colors"
+              disabled={palette.length <= 1}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        ))}
+        <button 
+          onClick={addColor}
+          className="w-8 h-8 flex items-center justify-center bg-zinc-900 border border-zinc-800 border-dashed rounded-lg text-zinc-500 hover:text-emerald-400 hover:border-emerald-500/50 transition-all"
+        >
+          <Plus size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // Simple markdown-to-html for Quill
 const toHtml = (md: string) => {
   if (!md) return '<p><br></p>';
@@ -261,7 +302,7 @@ const fromHtml = (html: string) => {
   let md = html;
 
   // Wordlists and Media - extract from data-raw
-  md = md.replace(/<span[^>]*class="(?:wordlist|image|video)-marker"[^>]*>.*?<\/span>/g, (match) => {
+  md = md.replace(/<span[^>]*class="[^"]*(?:wordlist|image|video)-marker[^"]*"[^>]*>.*?<\/span>/g, (match) => {
     const rawMatch = match.match(/data-raw="([^"]+)"/);
     if (rawMatch) {
       return rawMatch[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&');
@@ -716,17 +757,30 @@ const CompactUrlPicker = ({ url, onChange, placeholder = "URL", autoFocus = fals
  * A sub-component for editing a single segment within the VisualEditor.
  */
 function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs, updateMarkdown, moveSegment, removeSegment }: SegmentEditorProps) {
-  const getValidPattern = (type: string | undefined, current: string | undefined) => {
+  const getValidPatternType = (type: string | undefined) => {
+    if (!type) return 'fascinator';
+    if (['default', 'hypnotic', 'double', 'sacred_geometry'].includes(type)) return 'fascinator';
+    if (['sphere', 'galaxy'].includes(type)) return 'topology';
+    if (['breathing'].includes(type)) return 'cloud';
+    if (['cylinder', 'infinite'].includes(type)) return 'repetition';
+    return type;
+  };
+
+  const getAvailablePatterns = (type: string | undefined) => {
     const valid: Record<string, string[]> = {
-      fascinator: ['fractal', 'mandala', 'flame', 'dot', 'flat spiral', 'pendulum', 'wheel', 'dial', 'clock', 'torus', 'cone', 'ring', 'kaleido'],
+      fascinator: ['mandala', 'flame', 'dot', 'flat spiral', 'thicc spiral', 'pendulum', 'wheel', 'dial', 'clock', 'ring', 'kaleido'],
       repetition: ['grid', 'march', 'helix', 'spiral', 'vortex', 'sphere', 'cube', 'polygon'],
       cloud: ['particle', 'nebula', 'smoke', 'fluid', 'swarm', 'constellation', 'bubbles'],
       cluster: ['disordered', 'float', 'orbit', 'pulse', 'vortex'],
-      topology: ['pulse', 'tunnel', 'wave', 'nautilus spiral', 'orb', 'saddle', 'plane', 'random voxel surface', 'random curved surface', 'galaxy']
+      topology: ['orb', 'tunnel', 'wave', 'nautilus spiral', 'cone spiral', 'saddle', 'plane', 'random voxel surface', 'random curved surface', 'galaxy']
     };
-    const typeKey = type || 'fascinator';
-    if (current && valid[typeKey]?.includes(current)) return current;
-    return valid[typeKey]?.[0] || 'flat spiral';
+    return valid[getValidPatternType(type)] || valid.fascinator;
+  };
+
+  const getValidPattern = (type: string | undefined, current: string | undefined) => {
+    const available = getAvailablePatterns(type);
+    if (current && available.includes(current)) return current;
+    return available[0] || 'flat spiral';
   };
 
   const [activeBubble, setActiveBubble] = useState<{ 
@@ -926,7 +980,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
           <div 
             ref={bubbleRef}
             data-bubble-container="true"
-            className="absolute top-12 right-0 z-50 w-80 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200"
+            className="absolute top-12 right-0 z-50 w-96 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200"
           >
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
@@ -967,16 +1021,16 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               {activeBubble.type === 'style' ? (
                 <>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Font</label>
                     <select 
                       value={(activeBubble.isAux ? seg.config.auxFont : seg.config.textFont) || 'sans-serif'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxFont' : 'textFont', e.target.value)} 
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
                     >
                       <option value="sans-serif">Sans-Serif</option>
                       <option value="serif">Serif</option>
@@ -985,38 +1039,44 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       <option value="fantasy">Fantasy</option>
                     </select>
                   </div>
-                  <SliderInput
-                    label="Distance"
-                    min={1} max={50} step={1}
-                    value={(activeBubble.isAux ? seg.config.auxDistance : seg.config.textDistance) ?? 10}
-                    onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxDistance' : 'textDistance', val)}
-                  />
-                  <SliderInput
-                    label="Size"
-                    min={10} max={300} step={1}
-                    value={(activeBubble.isAux ? seg.config.auxSize : seg.config.textSize) ?? 100}
-                    onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxSize' : 'textSize', val)}
-                  />
-                  <div className="flex flex-col gap-1">
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Distance"
+                      min={1} max={50} step={1}
+                      value={(activeBubble.isAux ? seg.config.auxDistance : seg.config.textDistance) ?? 10}
+                      onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxDistance' : 'textDistance', val)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Size"
+                      min={10} max={300} step={1}
+                      value={(activeBubble.isAux ? seg.config.auxSize : seg.config.textSize) ?? 100}
+                      onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxSize' : 'textSize', val)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Outline</label>
                     <select 
                       value={(activeBubble.isAux ? seg.config.auxOutlineType : seg.config.textOutlineType) || 'none'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxOutlineType' : 'textOutlineType', e.target.value)} 
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
                     >
                       <option value="none">None</option>
                       <option value="rainbow">Rainbow</option>
                       <option value="solid">Solid</option>
                     </select>
                   </div>
-                  <SliderInput
-                    label="Outline Width"
-                    min={0} max={50} step={1}
-                    value={(activeBubble.isAux ? seg.config.auxOutlineWidth : seg.config.textOutlineWidth) ?? 8}
-                    onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxOutlineWidth' : 'textOutlineWidth', val)}
-                  />
-                  <div className="flex flex-col gap-1">
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Outline Width"
+                      min={0} max={50} step={1}
+                      value={(activeBubble.isAux ? seg.config.auxOutlineWidth : seg.config.textOutlineWidth) ?? 8}
+                      onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxOutlineWidth' : 'textOutlineWidth', val)}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Color</label>
                     <input 
                       type="color" 
@@ -1026,38 +1086,38 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       className="bg-zinc-950 border border-zinc-800 rounded-lg px-1 py-0.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 h-8 w-full" 
                     />
                   </div>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Shading</label>
                     <select 
                       value={(activeBubble.isAux ? seg.config.auxShading : seg.config.textShading) ? 'true' : 'false'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxShading' : 'textShading', e.target.value === 'true')} 
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
                     >
                       <option value="false">Off</option>
                       <option value="true">On</option>
                     </select>
                   </div>
-                  <div className="flex flex-col gap-1">
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Backdrop</label>
                     <select 
                       value={(activeBubble.isAux ? seg.config.auxBackdrop : seg.config.textBackdrop) ? 'true' : 'false'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxBackdrop' : 'textBackdrop', e.target.value === 'true')} 
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
                     >
                       <option value="false">Off</option>
                       <option value="true">On</option>
                     </select>
                   </div>
                   {!activeBubble.isAux && (
-                    <div className="flex flex-col gap-1">
+                    <div className="flex flex-col gap-1 col-span-2">
                       <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern</label>
                       <select 
                         value={seg.config.textDisplayPattern || 'center'} 
                         onChange={(e) => updateConfig(index, 'textDisplayPattern', e.target.value)} 
                         onMouseDown={(e) => e.stopPropagation()}
-                        className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                        className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
                       >
                         <option value="center">Center</option>
                         <option value="scatter">Scatter</option>
@@ -1076,7 +1136,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       value={(activeBubble.isAux ? seg.config.auxAnimType : seg.config.textAnimType) || 'none'} 
                       onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxAnimType' : 'textAnimType', e.target.value)} 
                       onMouseDown={(e) => e.stopPropagation()}
-                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
                     >
                       <option value="none">None</option>
                       <option value="zoom">Zoom</option>
@@ -1087,18 +1147,22 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       <option value="glitch">Glitch</option>
                     </select>
                   </div>
-                  <SliderInput
-                    label="Speed"
-                    min={0} max={5} step={0.1}
-                    value={(activeBubble.isAux ? seg.config.auxAnimSpeed : seg.config.textAnimSpeed) ?? 1.0}
-                    onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxAnimSpeed' : 'textAnimSpeed', val)}
-                  />
-                  <SliderInput
-                    label="Intensity"
-                    min={0} max={5} step={0.1}
-                    value={(activeBubble.isAux ? seg.config.auxAnimIntensity : seg.config.textAnimIntensity) ?? 1.0}
-                    onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxAnimIntensity' : 'textAnimIntensity', val)}
-                  />
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Speed"
+                      min={0} max={5} step={0.1}
+                      value={(activeBubble.isAux ? seg.config.auxAnimSpeed : seg.config.textAnimSpeed) ?? 1.0}
+                      onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxAnimSpeed' : 'textAnimSpeed', val)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Intensity"
+                      min={0} max={5} step={0.1}
+                      value={(activeBubble.isAux ? seg.config.auxAnimIntensity : seg.config.textAnimIntensity) ?? 1.0}
+                      onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxAnimIntensity' : 'textAnimIntensity', val)}
+                    />
+                  </div>
                 </>
               ) : activeBubble.type === 'speech' ? (
                 <>
@@ -1111,7 +1175,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Voice</label>
-                    <input type="text" value={seg.config.speech_voice || 'af_heart'} onChange={(e) => updateConfig(index, 'speech_voice', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    <input type="text" value={seg.config.speech_voice || 'af_heart'} onChange={(e) => updateConfig(index, 'speech_voice', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full" />
                   </div>
                   <div className="col-span-2">
                     <SliderInput
@@ -1128,7 +1192,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Binaural Mode</label>
-                    <select value={seg.config.binaural} onChange={(e) => updateConfig(index, 'binaural', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <select value={seg.config.binaural} onChange={(e) => updateConfig(index, 'binaural', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full">
                       <option value="off">Off</option>
                       <option value="focus">Focus</option>
                       <option value="relax">Relax</option>
@@ -1222,19 +1286,19 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern Type</label>
-                    <select value={seg.config.patternType || 'fascinator'} onChange={(e) => {
+                    <select value={getValidPatternType(seg.config.patternType)} onChange={(e) => {
                       const newType = e.target.value;
                       let defaultPattern = 'flat spiral';
                       if (newType === 'repetition') defaultPattern = 'grid';
                       else if (newType === 'cloud') defaultPattern = 'particle';
                       else if (newType === 'cluster') defaultPattern = 'disordered';
-                      else if (newType === 'topology') defaultPattern = 'pulse';
+                      else if (newType === 'topology') defaultPattern = 'orb';
                       
                       updateConfigs(index, {
                         patternType: newType,
                         pattern: defaultPattern
                       });
-                    }} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    }} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full">
                       <option value="fascinator">Fascinator</option>
                       <option value="repetition">Repetition</option>
                       <option value="cloud">Cloud</option>
@@ -1244,25 +1308,23 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Pattern</label>
-                    <select value={getValidPattern(seg.config.patternType, seg.config.pattern)} onChange={(e) => updateConfig(index, 'pattern', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                      {(seg.config.patternType === 'fascinator' || !seg.config.patternType) && (
+                    <select value={getValidPattern(seg.config.patternType, seg.config.pattern)} onChange={(e) => updateConfig(index, 'pattern', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full">
+                      {(getValidPatternType(seg.config.patternType) === 'fascinator') && (
                         <>
-                          <option value="fractal">Fractal</option>
                           <option value="mandala">Mandala</option>
                           <option value="flame">Flame</option>
                           <option value="dot">Dot</option>
                           <option value="flat spiral">Flat Spiral</option>
+                          <option value="thicc spiral">Thicc Spiral</option>
                           <option value="pendulum">Pendulum</option>
                           <option value="wheel">Wheel</option>
                           <option value="dial">Dial</option>
                           <option value="clock">Clock</option>
-                          <option value="torus">Torus</option>
-                          <option value="cone">Cone</option>
                           <option value="ring">Ring</option>
                           <option value="kaleido">Kaleido</option>
                         </>
                       )}
-                      {seg.config.patternType === 'repetition' && (
+                      {getValidPatternType(seg.config.patternType) === 'repetition' && (
                         <>
                           <option value="grid">Grid</option>
                           <option value="march">March</option>
@@ -1274,7 +1336,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                           <option value="polygon">Polygon</option>
                         </>
                       )}
-                      {seg.config.patternType === 'cloud' && (
+                      {getValidPatternType(seg.config.patternType) === 'cloud' && (
                         <>
                           <option value="particle">Particle</option>
                           <option value="nebula">Nebula</option>
@@ -1285,7 +1347,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                           <option value="bubbles">Bubbles</option>
                         </>
                       )}
-                      {seg.config.patternType === 'cluster' && (
+                      {getValidPatternType(seg.config.patternType) === 'cluster' && (
                         <>
                           <option value="disordered">Disordered</option>
                           <option value="float">Float</option>
@@ -1294,13 +1356,13 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                           <option value="vortex">Vortex</option>
                         </>
                       )}
-                      {seg.config.patternType === 'topology' && (
+                      {getValidPatternType(seg.config.patternType) === 'topology' && (
                         <>
-                          <option value="pulse">Pulse</option>
+                          <option value="orb">Orb</option>
                           <option value="tunnel">Tunnel</option>
                           <option value="wave">Wave</option>
                           <option value="nautilus spiral">Nautilus Spiral</option>
-                          <option value="orb">Orb</option>
+                          <option value="cone spiral">Cone Spiral</option>
                           <option value="saddle">Saddle</option>
                           <option value="plane">Plane</option>
                           <option value="random voxel surface">Random Voxel Surface</option>
@@ -1310,89 +1372,121 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       )}
                     </select>
                   </div>
-                  {seg.config.patternType === 'repetition' && (
+                  {/* Base Fascinator Selection for Cluster/Repetition */}
+                  {(getValidPatternType(seg.config.patternType) === 'cluster' || getValidPatternType(seg.config.patternType) === 'repetition') && (
+                    <div className="flex flex-col gap-1 col-span-2">
+                      <label className="text-[10px] text-zinc-500 uppercase font-bold">
+                        Base Fascinator
+                      </label>
+                      <select 
+                        value={
+                          getValidPatternType(seg.config.patternType) === 'cluster' ? (seg.config.clusterBasePattern || 'dot') : 
+                          (seg.config.repetitionBasePattern || 'dot')
+                        } 
+                        onChange={(e) => updateConfig(index, 
+                          getValidPatternType(seg.config.patternType) === 'cluster' ? 'clusterBasePattern' : 
+                          'repetitionBasePattern', 
+                          e.target.value
+                        )} 
+                        onMouseDown={(e) => e.stopPropagation()} 
+                        className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
+                      >
+                        {getAvailablePatterns('fascinator').map(p => (
+                          <option key={p} value={p}>{p.charAt(0).toUpperCase() + p.slice(1)}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Pattern Specific Configs */}
+                  {getValidPatternType(seg.config.patternType) === 'repetition' && (
+                    <div className="col-span-2">
+                      <SliderInput 
+                        label="Count" 
+                        value={seg.config.repetitionCount || 10} 
+                        min={1} max={50} step={1} 
+                        onChange={(val) => updateConfig(index, 'repetitionCount', val)} 
+                      />
+                    </div>
+                  )}
+
+                  {getValidPatternType(seg.config.patternType) === 'cluster' && (
                     <>
-                      <div className="flex flex-col gap-1 col-span-2">
-                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Base Fascinator</label>
-                        <select value={seg.config.repetitionBasePattern || 'dot'} onChange={(e) => updateConfig(index, 'repetitionBasePattern', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                          <option value="fractal">Fractal</option>
-                          <option value="mandala">Mandala</option>
-                          <option value="particle">Particle</option>
-                          <option value="flame">Flame</option>
-                          <option value="dot">Dot</option>
-                          <option value="flat spiral">Flat Spiral</option>
-                          <option value="pendulum">Pendulum</option>
-                          <option value="wheel">Wheel</option>
-                          <option value="dial">Dial</option>
-                          <option value="clock">Clock</option>
-                          <option value="torus">Torus</option>
-                          <option value="cone">Cone</option>
-                          <option value="ring">Ring</option>
-                          <option value="kaleido">Kaleido</option>
-                        </select>
+                      <div className="col-span-2">
+                        <SliderInput 
+                          label="Count" 
+                          value={seg.config.clusterCount || 20} 
+                          min={1} max={100} step={1} 
+                          onChange={(val) => updateConfig(index, 'clusterCount', val)} 
+                        />
                       </div>
-                      <div className="flex flex-col gap-1 col-span-1">
-                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Count</label>
-                        <input type="number" value={seg.config.repetitionCount || 10} onChange={(e) => updateConfig(index, 'repetitionCount', parseInt(e.target.value))} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                      <div className="col-span-2">
+                        <SliderInput 
+                          label="Chaos" 
+                          value={seg.config.clusterChaos || 50} 
+                          min={0} max={100} step={1} 
+                          onChange={(val) => updateConfig(index, 'clusterChaos', val)} 
+                        />
                       </div>
                     </>
                   )}
-                  {seg.config.patternType === 'cluster' && (
+
+                  {getValidPatternType(seg.config.patternType) === 'topology' && (seg.config.pattern === 'wave' || seg.config.pattern === 'saddle') && (
                     <>
-                      <div className="flex flex-col gap-1 col-span-2">
-                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Base Fascinator</label>
-                        <select value={seg.config.clusterBasePattern || 'dot'} onChange={(e) => updateConfig(index, 'clusterBasePattern', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
-                          <option value="fractal">Fractal</option>
-                          <option value="mandala">Mandala</option>
-                          <option value="particle">Particle</option>
-                          <option value="flame">Flame</option>
-                          <option value="dot">Dot</option>
-                          <option value="flat spiral">Flat Spiral</option>
-                          <option value="pendulum">Pendulum</option>
-                          <option value="wheel">Wheel</option>
-                          <option value="dial">Dial</option>
-                          <option value="clock">Clock</option>
-                          <option value="torus">Torus</option>
-                          <option value="cone">Cone</option>
-                          <option value="ring">Ring</option>
-                          <option value="kaleido">Kaleido</option>
-                        </select>
+                      <div className="col-span-2">
+                        <SliderInput 
+                          label="Amplitude" 
+                          value={seg.config.topologyAmplitude ?? 1.0} 
+                          min={0} max={5} step={0.1} 
+                          onChange={(val) => updateConfig(index, 'topologyAmplitude', val)} 
+                        />
                       </div>
-                      <div className="flex flex-col gap-1 col-span-1">
-                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Count</label>
-                        <input type="number" value={seg.config.clusterCount || 20} onChange={(e) => updateConfig(index, 'clusterCount', parseInt(e.target.value))} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
-                      </div>
-                      <div className="flex flex-col gap-1 col-span-1">
-                        <label className="text-[10px] text-zinc-500 uppercase font-bold">Chaos</label>
-                        <input type="range" min="0" max="100" value={seg.config.clusterChaos || 50} onChange={(e) => updateConfig(index, 'clusterChaos', parseInt(e.target.value))} onMouseDown={(e) => e.stopPropagation()} className="accent-emerald-500" />
+                      <div className="col-span-2">
+                        <SliderInput 
+                          label="Frequency" 
+                          value={seg.config.topologyFrequency ?? 1.0} 
+                          min={0.1} max={5} step={0.1} 
+                          onChange={(val) => updateConfig(index, 'topologyFrequency', val)} 
+                        />
                       </div>
                     </>
                   )}
-                  <div className="flex flex-col gap-1 col-span-2">
-                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 1</label>
-                    <div className="flex gap-2">
-                      <input type="color" value={seg.config.patternColor1 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
-                      <input type="text" value={seg.config.patternColor1 || ''} onChange={(e) => updateConfig(index, 'patternColor1', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
-                    </div>
+
+                  <div className="col-span-4">
+                    <PaletteManager 
+                      palette={seg.config.palette || ['#ffffff', '#00ff88', '#0066ff']} 
+                      onChange={(newPalette) => updateConfig(index, 'palette', newPalette)} 
+                    />
                   </div>
-                  <div className="flex flex-col gap-1 col-span-2">
-                    <label className="text-[10px] text-zinc-500 uppercase font-bold">Color 2</label>
-                    <div className="flex gap-2">
-                      <input type="color" value={seg.config.patternColor2 || '#ffffff'} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg w-8 h-8 p-1 cursor-pointer" />
-                      <input type="text" value={seg.config.patternColor2 || ''} onChange={(e) => updateConfig(index, 'patternColor2', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="#ffffff" />
-                    </div>
-                  </div>
+                  {(seg.config.pattern === 'flat spiral' || seg.config.pattern === 'thicc spiral') && (
+                    <>
+                      <div className="col-span-2">
+                        <SliderInput label="Spiral Arms" min={1} max={20} step={1} value={seg.config.spiralArms ?? 5} onChange={(val) => updateConfig(index, 'spiralArms', val)} />
+                      </div>
+                      <div className="col-span-2">
+                        <SliderInput label="Spiral Thickness" min={0.1} max={2} step={0.1} value={seg.config.spiralThickness ?? 0.5} onChange={(val) => updateConfig(index, 'spiralThickness', val)} />
+                      </div>
+                      <div className="col-span-2">
+                        <SliderInput label="Spiral Curvature" min={0.1} max={5} step={0.1} value={seg.config.spiralCurvature ?? 1.0} onChange={(val) => updateConfig(index, 'spiralCurvature', val)} />
+                      </div>
+                      {seg.config.pattern === 'flat spiral' && (
+                        <div className="col-span-2">
+                          <SliderInput label="Spiral Elasticity" min={0} max={1} step={0.01} value={seg.config.spiralElasticity ?? 0.5} onChange={(val) => updateConfig(index, 'spiralElasticity', val)} />
+                        </div>
+                      )}
+                    </>
+                  )}
                 </>
               ) : activeBubble.type === 'anim_config' ? (
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Face Camera</label>
-                    <select value={seg.config.patternFaceCamera === undefined ? 'true' : (seg.config.patternFaceCamera ? 'true' : 'false')} onChange={(e) => updateConfig(index, 'patternFaceCamera', e.target.value === 'true')} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <select value={seg.config.patternFaceCamera === undefined ? 'true' : (seg.config.patternFaceCamera ? 'true' : 'false')} onChange={(e) => updateConfig(index, 'patternFaceCamera', e.target.value === 'true')} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full">
                       <option value="false">Off</option>
                       <option value="true">On</option>
                     </select>
                   </div>
-                  {seg.config.patternType === 'repetition' && (
+                  {getValidPatternType(seg.config.patternType) === 'repetition' && (
                     <div className="flex flex-col gap-1 col-span-2">
                       <label className="text-[10px] text-zinc-500 uppercase font-bold">Repetition Animation</label>
                       <select value={seg.config.repetitionAnimation || 'none'} onChange={(e) => updateConfig(index, 'repetitionAnimation', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
@@ -1404,7 +1498,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       </select>
                     </div>
                   )}
-                  {seg.config.patternType === 'cloud' && (
+                  {getValidPatternType(seg.config.patternType) === 'cloud' && (
                     <div className="flex flex-col gap-1 col-span-2">
                       <label className="text-[10px] text-zinc-500 uppercase font-bold">Cloud Animation</label>
                       <select value={seg.config.cloudAnimation || 'none'} onChange={(e) => updateConfig(index, 'cloudAnimation', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
@@ -1426,6 +1520,73 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       onChange={(val) => updateConfig(index, 'patternSpeed', val)}
                     />
                   </div>
+                  {(getValidPatternType(seg.config.patternType) === 'repetition' || getValidPatternType(seg.config.patternType) === 'cluster') ? (
+                    <>
+                      <div className="col-span-2">
+                        <SliderInput
+                          label="Base Spin"
+                          min={-5}
+                          max={5}
+                          step={0.1}
+                          value={seg.config.baseSpin ?? 0}
+                          onChange={(val) => updateConfig(index, 'baseSpin', val)}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <SliderInput
+                          label="Base Rotation"
+                          min={-5}
+                          max={5}
+                          step={0.1}
+                          value={seg.config.baseRotation ?? 0}
+                          onChange={(val) => updateConfig(index, 'baseRotation', val)}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <SliderInput
+                          label="Base Tumble"
+                          min={-5}
+                          max={5}
+                          step={0.1}
+                          value={seg.config.baseTumble ?? 0}
+                          onChange={(val) => updateConfig(index, 'baseTumble', val)}
+                        />
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="col-span-2">
+                        <SliderInput
+                          label="Pattern Spin"
+                          min={-5}
+                          max={5}
+                          step={0.1}
+                          value={seg.config.patternSpin ?? 0}
+                          onChange={(val) => updateConfig(index, 'patternSpin', val)}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <SliderInput
+                          label="Pattern Rotation"
+                          min={-5}
+                          max={5}
+                          step={0.1}
+                          value={seg.config.patternRotation ?? 0}
+                          onChange={(val) => updateConfig(index, 'patternRotation', val)}
+                        />
+                      </div>
+                      <div className="col-span-2">
+                        <SliderInput
+                          label="Pattern Tumble"
+                          min={-5}
+                          max={5}
+                          step={0.1}
+                          value={seg.config.patternTumble ?? 0}
+                          onChange={(val) => updateConfig(index, 'patternTumble', val)}
+                        />
+                      </div>
+                    </>
+                  )}
                   <div className="col-span-2">
                     <SliderInput
                       label="Pattern Scale"
@@ -1451,7 +1612,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Camera Mode</label>
-                    <select value={seg.config.camera} onChange={(e) => updateConfig(index, 'camera', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500">
+                    <select value={seg.config.camera} onChange={(e) => updateConfig(index, 'camera', e.target.value)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full">
                       <option value="static">Static</option>
                       <option value="orbit">Orbit</option>
                       <option value="fly">Fly</option>
@@ -1468,33 +1629,33 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       onChange={(val) => updateConfig(index, 'cameraSpeed', val)}
                     />
                   </div>
-                  <div className="flex flex-col gap-1 col-span-1">
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Radius</label>
-                    <input type="number" step="0.5" value={seg.config.cameraRadius ?? ''} onChange={(e) => updateConfig(index, 'cameraRadius', parseFloat(e.target.value) || undefined)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
+                    <input type="number" step="0.5" value={seg.config.cameraRadius ?? ''} onChange={(e) => updateConfig(index, 'cameraRadius', parseFloat(e.target.value) || undefined)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full" placeholder="Auto" />
                   </div>
-                  <div className="flex flex-col gap-1 col-span-1">
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Height</label>
-                    <input type="number" step="0.1" value={seg.config.cameraHeight ?? ''} onChange={(e) => updateConfig(index, 'cameraHeight', parseFloat(e.target.value) || undefined)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
+                    <input type="number" step="0.1" value={seg.config.cameraHeight ?? ''} onChange={(e) => updateConfig(index, 'cameraHeight', parseFloat(e.target.value) || undefined)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full" placeholder="Auto" />
                   </div>
-                  <div className="flex flex-col gap-1 col-span-1">
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Target X</label>
-                    <input type="number" step="0.5" value={seg.config.cameraTargetX ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetX', parseFloat(e.target.value) || 0)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    <input type="number" step="0.5" value={seg.config.cameraTargetX ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetX', parseFloat(e.target.value) || 0)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full" />
                   </div>
-                  <div className="flex flex-col gap-1 col-span-1">
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Target Y</label>
-                    <input type="number" step="0.5" value={seg.config.cameraTargetY ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetY', parseFloat(e.target.value) || 0)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    <input type="number" step="0.5" value={seg.config.cameraTargetY ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetY', parseFloat(e.target.value) || 0)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full" />
                   </div>
-                  <div className="flex flex-col gap-1 col-span-1">
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Target Z</label>
-                    <input type="number" step="0.5" value={seg.config.cameraTargetZ ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetZ', parseFloat(e.target.value) || 0)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" />
+                    <input type="number" step="0.5" value={seg.config.cameraTargetZ ?? 0} onChange={(e) => updateConfig(index, 'cameraTargetZ', parseFloat(e.target.value) || 0)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full" />
                   </div>
-                  <div className="flex flex-col gap-1 col-span-1">
+                  <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">FOV</label>
-                    <input type="number" step="0.1" value={seg.config.cameraFov ?? ''} onChange={(e) => updateConfig(index, 'cameraFov', parseFloat(e.target.value) || undefined)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" placeholder="Auto" />
+                    <input type="number" step="0.1" value={seg.config.cameraFov ?? ''} onChange={(e) => updateConfig(index, 'cameraFov', parseFloat(e.target.value) || undefined)} onMouseDown={(e) => e.stopPropagation()} className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full" placeholder="Auto" />
                   </div>
                 </>
               ) : (activeBubble.type === 'image' || activeBubble.type === 'video') ? (
-                <div className="col-span-2 flex flex-col gap-3">
+                <div className="col-span-4 flex flex-col gap-3">
                   {(() => {
                     const m = media[activeBubble.index ?? 0];
                     if (!m) return <div className="text-zinc-500 text-xs italic">Item not found</div>;
@@ -1528,7 +1689,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   })()}
                 </div>
               ) : activeBubble.type === 'wordlist' ? (
-                <div className="col-span-2 flex flex-col gap-3">
+                <div className="col-span-4 flex flex-col gap-3">
                   {(() => {
                     const wl = wordlists[activeBubble.index ?? 0];
                     if (!wl) return <div className="text-zinc-500 text-xs italic">Item not found</div>;
@@ -1537,7 +1698,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] text-zinc-500 uppercase font-bold">Predefined Lists</label>
                           <select 
-                            className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                            className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
                             onMouseDown={(e) => e.stopPropagation()}
                             onChange={(e) => {
                               const keyword = e.target.value;
@@ -1561,7 +1722,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                             value={wl.words} 
                             onChange={(e) => handleWordlistChange(activeBubble.index ?? 0, 'words', e.target.value)} 
                             onMouseDown={(e) => e.stopPropagation()}
-                            className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500" 
+                            className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full" 
                             placeholder="relax,breathe,focus" 
                           />
                           {PREBUILT_WORDLISTS[wl.words.toLowerCase()] ? (
@@ -1589,7 +1750,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   })()}
                 </div>
               ) : (
-                <div className="col-span-2">
+                <div className="col-span-4">
                   <SliderInput
                     label="Metronome (BPM)"
                     min={0}

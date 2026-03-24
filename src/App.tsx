@@ -1,12 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Square, Edit3, Eye, Settings, Share2, HelpCircle, X, Ear, Loader2, Download } from 'lucide-react';
+import { Play, Square, Edit3, Eye, Settings, Share2, HelpCircle, X, Ear, Loader2, Download, Camera } from 'lucide-react';
 import { KokoroTTS } from 'kokoro-js';
 import { env } from '@huggingface/transformers';
 import { MarkdownEditor } from './components/MarkdownEditor';
 import { SceneManager } from './SceneManager';
 import { audioEngine } from './audioEngine';
 import { DEFAULT_MARKDOWN, parseTimeline, serializeTimeline, unminifyMarkdown, TimelineSegment } from './timelineParser';
-import { DEMO_MARKDOWN } from './demoPreset';
 import { VisualEditor } from './components/VisualEditor';
 import { AudioAnalysisFlyout } from './components/AudioAnalysisFlyout';
 import { ShareFlyout } from './components/ShareFlyout';
@@ -33,6 +32,25 @@ const SpiralLogo = ({ size = 20, className = "" }: { size?: number, className?: 
     <circle cx="50" cy="50" r="5" fill="currentColor" />
   </svg>
 );
+
+// Load all markdown presets from the presets directory
+const presetFiles = import.meta.glob('./presets/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
+
+const PRESETS = Object.entries(presetFiles).map(([path, content]) => {
+  const name = path.split('/').pop()?.replace('.md', '') || 'preset';
+  return {
+    name,
+    content,
+    encoded: LZString.compressToEncodedURIComponent(content)
+  };
+}).sort((a, b) => {
+  // Ensure 'demo' is first, then alphabetical
+  if (a.name === 'demo') return -1;
+  if (b.name === 'demo') return 1;
+  return a.name.localeCompare(b.name);
+});
+
+const DEMO_MARKDOWN = PRESETS.find(p => p.name === 'demo')?.content || DEFAULT_MARKDOWN;
 
 /**
  * Main Application Component
@@ -265,57 +283,17 @@ export default function App() {
     }
   };
 
-  const DEMOS = {
-    DEFAULT: DEFAULT_MARKDOWN,
-    DEMO: DEMO_MARKDOWN,
-    FOCUS: "# Deep Focus\nFocus your mind on the center.\n\n```config\nduration: 30\npatternType: fascinator\npattern: flat spiral\npatternSpeed: 0.5\npatternColor1: #000000\npatternColor2: #00ff88\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: focus\nmetronome: 0\n```",
-    COSMOS: "# Cosmic Journey\nDrifting through the stars.\n\n```config\nduration: 45\npatternType: cluster\npattern: galaxy\npatternSpeed: 0.2\ncamera: orbit\ncameraSpeed: 0.1\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: sleep\n```",
-    GEOMETRY: "# Sacred Geometry\nThe patterns of the universe.\n\n```config\nduration: 40\npatternType: fascinator\npattern: mandala\npatternComplexity: 10\npatternColor1: #ff00ff\npatternColor2: #00ffff\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: relax\n```",
-    ENERGY: "# Energy Pulse\nFeel the rhythm.\n\n```config\nduration: 20\npatternType: repetition\npattern: pulse\npatternSpeed: 2.0\nmetronome: 120\ncameraRadius: 30\ntextSize: 20\ntextDistance: 25\nbinaural: focus\n```"
-  };
-
-  // Pre-calculate encoded demos for highlighting and links
-  const encodedDemos = React.useMemo(() => ({
-    DEFAULT: encodeMarkdown(DEMOS.DEFAULT),
-    DEMO: encodeMarkdown(DEMOS.DEMO),
-    FOCUS: encodeMarkdown(DEMOS.FOCUS),
-    COSMOS: encodeMarkdown(DEMOS.COSMOS),
-    GEOMETRY: encodeMarkdown(DEMOS.GEOMETRY),
-    ENERGY: encodeMarkdown(DEMOS.ENERGY),
-  }), []);
-
   const presetLinks = (
     <>
-      <a 
-        href={`?m=${encodedDemos.DEMO}`}
-        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${(markdown === DEMOS.DEMO) ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-      >
-        demo
-      </a>
-      <a 
-        href={`?m=${encodedDemos.FOCUS}`}
-        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === DEMOS.FOCUS ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-      >
-        simple
-      </a>
-      <a 
-        href={`?m=${encodedDemos.COSMOS}`}
-        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === DEMOS.COSMOS ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-      >
-        transcribe
-      </a>
-      <a 
-        href={`?m=${encodedDemos.GEOMETRY}`}
-        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === DEMOS.GEOMETRY ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-      >
-        guided
-      </a>
-      <a 
-        href={`?m=${encodedDemos.ENERGY}`}
-        className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === DEMOS.ENERGY ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
-      >
-        spicy
-      </a>
+      {PRESETS.map((preset) => (
+        <a 
+          key={preset.name}
+          href={`?m=${preset.encoded}`}
+          className={`px-3 py-1 text-xs font-medium rounded-full text-center transition-all ${markdown === preset.content ? 'text-emerald-400 bg-zinc-800/80 shadow-inner' : 'text-zinc-500 hover:text-zinc-300'}`}
+        >
+          {preset.name}
+        </a>
+      ))}
     </>
   );
 
@@ -853,7 +831,7 @@ camera: orbit
         />
 
         {/* Demo Preset Button */}
-        {markdown === DEMOS.DEMO && (
+        {markdown === DEMO_MARKDOWN && (
           <button
             className="absolute right-4 top-1/2 -translate-y-1/2 z-20 p-4 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] hover:bg-emerald-500/30 hover:shadow-[0_0_25px_rgba(16,185,129,0.7)] transition-all duration-300 group"
             title="add binaural audio"
@@ -883,6 +861,33 @@ camera: orbit
             }}
           >
             <Ear size={24} />
+          </button>
+        )}
+
+        {/* Save Camera Position Button */}
+        {mode === 'edit' && (
+          <button
+            className="absolute right-4 bottom-24 z-20 p-4 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 shadow-[0_0_15px_rgba(16,185,129,0.5)] hover:bg-emerald-500/30 hover:shadow-[0_0_25px_rgba(16,185,129,0.7)] transition-all duration-300 group"
+            title="Save Camera Position"
+            aria-label="Save Camera Position"
+            onClick={() => {
+              if (sceneManagerRef.current && segments.length > 0) {
+                const cam = sceneManagerRef.current.getCamera();
+                const newSegments = [...segments];
+                const currentSeg = newSegments[currentSegmentIndex];
+                currentSeg.config.cameraAlpha = cam.alpha;
+                currentSeg.config.cameraHeight = cam.beta;
+                currentSeg.config.cameraRadius = cam.radius;
+                currentSeg.config.cameraTargetX = cam.target.x;
+                currentSeg.config.cameraTargetY = cam.target.y;
+                currentSeg.config.cameraTargetZ = cam.target.z;
+                
+                setSegments(newSegments);
+                setMarkdown(serializeTimeline(newSegments));
+              }
+            }}
+          >
+            <Camera size={24} />
           </button>
         )}
 
