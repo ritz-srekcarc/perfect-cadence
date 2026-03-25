@@ -36,8 +36,9 @@ const SpiralLogo = ({ size = 20, className = "" }: { size?: number, className?: 
 // Load all markdown presets from the presets directory
 const presetFiles = import.meta.glob('./presets/*.md', { query: '?raw', import: 'default', eager: true }) as Record<string, string>;
 
-const PRESETS = Object.entries(presetFiles).map(([path, content]) => {
+const PRESETS = Object.entries(presetFiles).map(([path, rawContent]) => {
   const name = path.split('/').pop()?.replace('.md', '') || 'preset';
+  const content = rawContent.trim();
   return {
     name,
     content,
@@ -307,18 +308,8 @@ export default function App() {
     
     const hasSeenWarning = localStorage.getItem('hasSeenSeizureWarning');
     
-    const BASIC_GREETING_MARKDOWN = `\`\`\`config
-duration: 10
-pattern: particles
-patternType: galaxy
-camera: orbit
-\`\`\`
-
-# Welcome Back
-> Ready to create another immersive experience?
-`;
-
-    let initialMarkdown = hasSeenWarning ? BASIC_GREETING_MARKDOWN : DEFAULT_MARKDOWN;
+    const WELCOME_MARKDOWN = PRESETS.find(p => p.name === 'welcome')?.content || DEFAULT_MARKDOWN;
+    let initialMarkdown = hasSeenWarning ? WELCOME_MARKDOWN : DEFAULT_MARKDOWN;
     
     if (encrypted) {
       setEncryptedPayload(encrypted);

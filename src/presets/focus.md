@@ -9,8 +9,8 @@ patternSpeed: 0.5
 patternColor1: #000000
 patternColor2: #00ff88
 cameraRadius: 30
-textSize: 20
-textDistance: 25
+textSize: 100
+textDistance: -5
 binaural: focus
 metronome: 0
 ```

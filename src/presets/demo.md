@@ -14,8 +14,8 @@ camera: orbit
 patternSpeed: 0.50
 textAnimType: fade
 textDisplayPattern: center
-textSize: 40
-textDistance: 25
+textSize: 200
+textDistance: -5
 binaural: off
 metronome: 0
 ```

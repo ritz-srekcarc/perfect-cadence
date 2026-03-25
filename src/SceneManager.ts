@@ -112,8 +112,33 @@ export class SceneManager {
       uniform float thickness;
       uniform float curvature;
       uniform float elasticity;
+      
+      uniform vec3 color0;
       uniform vec3 color1;
       uniform vec3 color2;
+      uniform vec3 color3;
+      uniform vec3 color4;
+      uniform vec3 color5;
+      uniform vec3 color6;
+      uniform vec3 color7;
+      uniform vec3 color8;
+      uniform vec3 color9;
+      uniform int numArmColors;
+      uniform vec3 outlineColor;
+      uniform float hasOutline;
+
+      vec3 getArmColor(int index) {
+          if (index == 0) return color0;
+          if (index == 1) return color1;
+          if (index == 2) return color2;
+          if (index == 3) return color3;
+          if (index == 4) return color4;
+          if (index == 5) return color5;
+          if (index == 6) return color6;
+          if (index == 7) return color7;
+          if (index == 8) return color8;
+          return color9;
+      }
 
       void main(void) {
           vec2 uv = vUV * 2.0 - 1.0;
@@ -129,13 +154,39 @@ export class SceneManager {
           float s = sin(spiral);
           
           // Thickness control
-          float mask = smoothstep(1.0 - thickness, 1.0, s);
+          // thickness is mapped such that larger thickness means thicker arms
+          // s goes from -1 to 1.
+          float threshold = 1.0 - thickness;
+          float mask = smoothstep(threshold, 1.0, s);
+          
+          // Outline mask
+          float outlineMask = 0.0;
+          if (hasOutline > 0.5) {
+              // Outline is just outside the threshold
+              outlineMask = smoothstep(threshold - 0.2, threshold, s) - mask;
+          }
           
           // Fade out at edges
-          mask *= smoothstep(1.0, 0.9, r);
+          float edgeFade = smoothstep(1.0, 0.9, r);
+          mask *= edgeFade;
+          outlineMask *= edgeFade;
           
-          vec3 finalColor = mix(color2, color1, mask);
-          gl_FragColor = vec4(finalColor, mask);
+          // Determine arm index
+          float k = floor(spiral / (2.0 * 3.14159265359));
+          float armIndex = mod(k, arms);
+          int colorIndex = int(mod(armIndex, float(numArmColors)));
+          
+          vec3 armColor = getArmColor(colorIndex);
+          
+          vec3 finalColor = armColor;
+          float finalAlpha = mask;
+          
+          if (hasOutline > 0.5) {
+              finalColor = mix(outlineColor, armColor, mask / max(mask + outlineMask, 0.001));
+              finalAlpha = mask + outlineMask;
+          }
+          
+          gl_FragColor = vec4(finalColor, finalAlpha);
       }
     `;
 
@@ -560,7 +611,7 @@ export class SceneManager {
       let localH = 0;
 
       if (layer === 'aux') {
-        const dist = Math.max(0.1, this.currentConfig?.auxDistance ?? 10);
+        const dist = Math.max(0.1, Math.abs(this.currentConfig?.auxDistance ?? 10));
         const fov = this.camera.fov;
         const aspectRatio = this.engine.getAspectRatio(this.camera);
         const visibleHeight = 2 * dist * Math.tan(fov / 2);
@@ -569,7 +620,7 @@ export class SceneManager {
         localW = visibleWidth / (dist / 5);
         localH = visibleHeight / (dist / 5);
       } else {
-        const dist = Math.max(0.1, this.currentConfig?.textDistance ?? 10);
+        const dist = Math.max(0.1, Math.abs(this.currentConfig?.textDistance ?? -5));
         // Fit inside pattern: say 15x10 world size
         localW = 15 / (dist / 5);
         localH = 10 / (dist / 5);
@@ -679,6 +730,7 @@ export class SceneManager {
       this.xrSegmentText.text = "Current Segment: " + (config.pattern || "None");
     }
 
+    const isFlatSpiral = config.pattern === 'flat spiral';
     const patternChanged = !prevConfig || 
       prevConfig.pattern !== config.pattern || 
       prevConfig.patternType !== config.patternType ||
@@ -691,11 +743,13 @@ export class SceneManager {
       prevConfig.cloudAnimation !== config.cloudAnimation ||
       prevConfig.patternScale !== config.patternScale ||
       prevConfig.patternComplexity !== config.patternComplexity ||
-      JSON.stringify(prevConfig.palette) !== JSON.stringify(config.palette) ||
       prevConfig.patternSpeed !== config.patternSpeed ||
-      prevConfig.spiralArms !== config.spiralArms ||
-      prevConfig.spiralThickness !== config.spiralThickness ||
-      prevConfig.spiralCurvature !== config.spiralCurvature;
+      (!isFlatSpiral && (
+        JSON.stringify(prevConfig.palette) !== JSON.stringify(config.palette) ||
+        prevConfig.spiralArms !== config.spiralArms ||
+        prevConfig.spiralThickness !== config.spiralThickness ||
+        prevConfig.spiralCurvature !== config.spiralCurvature
+      ));
     
     const cameraChanged = !prevConfig || prevConfig.camera !== config.camera;
     
@@ -744,6 +798,7 @@ export class SceneManager {
           break;
         default:
           if (config.pattern === 'flat spiral') this.createFlatSpiral();
+          else if (config.pattern === 'thicc spiral') this.createThiccSpiral();
           else this.createConeSpiral();
           break;
       }
@@ -757,13 +812,11 @@ export class SceneManager {
 
     // Apply text config
     if (this.textPlane) {
-      // Primary text is now fixed slightly closer to the initial camera position
-      // than the world origin (pattern center) so it can be clearly read.
-      this.textPlane.position = new Vector3(0, 0, -5);
+      const dist = config.textDistance ?? -5;
+      this.textPlane.position = new Vector3(0, 0, dist);
       
-      const dist = config.textDistance ?? 10;
       // We use dist to scale the text plane
-      const scale = dist / 5;
+      const scale = Math.max(0.1, Math.abs(dist) / 5);
       this.textPlane.scaling = new Vector3(scale, scale, scale);
     }
     
@@ -775,7 +828,7 @@ export class SceneManager {
     if (this.auxTextPlane) {
       const dist = config.auxDistance ?? 10;
       this.auxTextPlane.position.z = dist;
-      const scale = dist / 5;
+      const scale = Math.max(0.1, Math.abs(dist) / 5);
       this.auxTextPlane.scaling = new Vector3(scale, scale, scale);
     }
     
@@ -1229,6 +1282,7 @@ export class SceneManager {
     else if (pattern === 'flame') this.createFlame();
     else if (pattern === 'dot') this.createDot();
     else if (pattern === 'flat spiral') this.createFlatSpiral();
+    else if (pattern === 'thicc spiral') this.createThiccSpiral();
     else if (pattern === 'cone spiral' || pattern === 'spiral') this.createConeSpiral();
     else if (pattern === 'pendulum') this.createPendulum();
     else if (pattern === 'wheel') this.createWheel();
@@ -1628,8 +1682,6 @@ export class SceneManager {
 
   private createFlatSpiral() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
-    const color1 = this.getPaletteColor(0, new Color3(1, 1, 1));
-    const color2 = this.getPaletteColor(1, new Color3(0, 0, 0));
     const arms = this.currentConfig?.spiralArms ?? 5;
     const thickness = this.currentConfig?.spiralThickness ?? 0.5;
     const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
@@ -1640,7 +1692,7 @@ export class SceneManager {
       fragment: "spiral",
     }, {
       attributes: ["position", "uv"],
-      uniforms: ["worldViewProjection", "time", "arms", "thickness", "curvature", "elasticity", "color1", "color2"],
+      uniforms: ["worldViewProjection", "time", "arms", "thickness", "curvature", "elasticity", "color0", "color1", "color2", "color3", "color4", "color5", "color6", "color7", "color8", "color9", "numArmColors", "outlineColor", "hasOutline"],
       needAlphaBlending: true
     });
 
@@ -1649,8 +1701,6 @@ export class SceneManager {
     shaderMaterial.setFloat("thickness", thickness);
     shaderMaterial.setFloat("curvature", curvature);
     shaderMaterial.setFloat("elasticity", elasticity);
-    shaderMaterial.setColor3("color1", color1);
-    shaderMaterial.setColor3("color2", color2);
     shaderMaterial.backFaceCulling = false;
 
     const disc = MeshBuilder.CreateDisc("flatSpiral", { radius: 10 * scale, tessellation: 64 }, this.scene);
@@ -1661,48 +1711,59 @@ export class SceneManager {
 
   private createThiccSpiral() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
-    const color = this.getPaletteColor(0, new Color3(1, 1, 1));
     const arms = this.currentConfig?.spiralArms ?? 5;
     const thickness = this.currentConfig?.spiralThickness ?? 0.5;
     const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
+    const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
     
-    const material = new StandardMaterial("thiccSpiralMat", this.scene);
-    material.emissiveColor = color;
-    material.wireframe = true;
-    material.alpha = 0.8;
-    material.backFaceCulling = false;
-
+    // We will use elasticity in the update loop, but we need to store the base parameters
+    // on the meshes so we can reconstruct the path.
+    
     for (let a = 0; a < arms; a++) {
+      const color = this.getPaletteColor(a % 10, new Color3(1, 1, 1));
+      const material = new StandardMaterial(`thiccSpiralMat_${a}`, this.scene);
+      material.emissiveColor = color;
+      material.wireframe = true;
+      material.alpha = 0.8;
+      material.backFaceCulling = false;
+
       const armOffset = (Math.PI * 2 / arms) * a;
-      const paths = [];
-      const numPaths = 10;
+      const path = [];
       const pathLength = 100;
       
-      for (let i = 0; i < numPaths; i++) {
-        const path = [];
-        const widthOffset = (i / (numPaths - 1) - 0.5) * thickness * scale;
+      for (let j = 0; j < pathLength; j++) {
+        const t = j / (pathLength - 1);
+        const angle = t * Math.PI * 4 * curvature + armOffset;
+        let radius = t * 10 * scale;
         
-        for (let j = 0; j < pathLength; j++) {
-          const t = j / (pathLength - 1);
-          // Curvature controls how tightly the spiral winds
-          const angle = t * Math.PI * 4 * curvature + armOffset;
-          const radius = t * 10 * scale;
-          
-          // Flat disk, so y is 0
-          // Add width offset perpendicular to the spiral arm
-          const perpAngle = angle + Math.PI / 2;
-          const x = Math.cos(angle) * radius + Math.cos(perpAngle) * widthOffset;
-          const z = Math.sin(angle) * radius + Math.sin(perpAngle) * widthOffset;
-          
-          path.push(new Vector3(x, 0, z));
-        }
-        paths.push(path);
+        // Apply elasticity deformation similar to flat spiral shader
+        // In shader, r goes from 0 to 1, and def is sin(r * 10.0 - time * 2.0) * elasticity * 0.2
+        // Here t goes from 0 to 1, and we scale the deformation by 10 * scale to match world size
+        const def = Math.sin(t * 10.0 - this.time * (this.currentConfig?.patternSpeed ?? 1.0) * 2.0) * elasticity * 2.0 * scale;
+        radius += def;
+        
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        
+        path.push(new Vector3(x, 0, z));
       }
 
-      const ribbon = MeshBuilder.CreateRibbon(`thicc_spiral_${a}`, { pathArray: paths, sideOrientation: 2 }, this.scene);
-      ribbon.parent = this.patternRoot;
-      ribbon.material = material;
-      this.currentMeshes.push(ribbon);
+      const tube = MeshBuilder.CreateTube(`thicc_spiral_${a}`, { 
+        path: path, 
+        radius: thickness * scale * 0.5, 
+        tessellation: 16,
+        updatable: true 
+      }, this.scene);
+      
+      // Flatten the tube on Y for an oval cross-section
+      tube.scaling.y = 0.3;
+      
+      // Store parameters for animation
+      tube.metadata = { armIndex: a, armOffset, pathLength };
+      
+      tube.parent = this.patternRoot;
+      tube.material = material;
+      this.currentMeshes.push(tube);
     }
   }
 
@@ -1968,6 +2029,51 @@ export class SceneManager {
       this.patternRoot.getChildren().forEach(child => {
         if (child instanceof Mesh && child.material instanceof ShaderMaterial) {
           child.material.setFloat("time", this.time * animSpeed);
+          
+          if (child.material.name === "spiralShader") {
+            const arms = this.currentConfig?.spiralArms ?? 5;
+            child.material.setFloat("arms", arms);
+            child.material.setFloat("thickness", this.currentConfig?.spiralThickness ?? 0.5);
+            child.material.setFloat("curvature", this.currentConfig?.spiralCurvature ?? 1.0);
+            child.material.setFloat("elasticity", this.currentConfig?.spiralElasticity ?? 0.5);
+            
+            const palette = this.currentConfig?.palette && Array.isArray(this.currentConfig.palette) 
+                ? this.currentConfig.palette 
+                : (this.currentConfig?.palette ? (this.currentConfig.palette as any).split(',') : ['#ffffff', '#000000']);
+            let armColorsHex = [...palette];
+            let outlineColorHex = '#000000';
+            let hasOutline = 0.0;
+
+            if (palette.length > 1) {
+                let found = false;
+                for (let i = 0; i < palette.length - 1; i++) {
+                    const num = palette.length - i;
+                    if (arms % num === 0 || num % arms === 0) {
+                        if (i > 0) {
+                            hasOutline = 1.0;
+                            outlineColorHex = palette[palette.length - 1];
+                            armColorsHex = palette.slice(0, num);
+                        }
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    hasOutline = 1.0;
+                    outlineColorHex = palette[palette.length - 1];
+                    armColorsHex = palette.slice(0, palette.length - 1);
+                }
+            }
+            
+            child.material.setInt("numArmColors", armColorsHex.length);
+            child.material.setFloat("hasOutline", hasOutline);
+            child.material.setColor3("outlineColor", Color3.FromHexString(outlineColorHex));
+            
+            for (let i = 0; i < 10; i++) {
+                const hex = armColorsHex[i % armColorsHex.length];
+                child.material.setColor3(`color${i}`, Color3.FromHexString(hex));
+            }
+          }
         }
       });
     }
@@ -2084,10 +2190,37 @@ export class SceneManager {
       }
     }
 
-    if ((pattern === 'flat spiral' || pattern === 'cone spiral' || pattern === 'spiral' || pattern === 'galaxy' || pattern === 'vortex' || pattern === 'nautilus spiral') && this.currentMeshes.length > 0) {
+    if ((pattern === 'flat spiral' || pattern === 'thicc spiral' || pattern === 'cone spiral' || pattern === 'spiral' || pattern === 'galaxy' || pattern === 'vortex' || pattern === 'nautilus spiral') && this.currentMeshes.length > 0) {
       this.currentMeshes.forEach((m, i) => {
-        if (pattern === 'flat spiral') {
+        if (pattern === 'flat spiral' || pattern === 'thicc spiral') {
           m.rotation.z -= 0.01 * animSpeed;
+          
+          if (pattern === 'thicc spiral' && m.metadata && m.metadata.pathLength) {
+            const scale = this.currentConfig?.patternScale ?? 1.0;
+            const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
+            const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
+            const thickness = this.currentConfig?.spiralThickness ?? 0.5;
+            const armOffset = m.metadata.armOffset;
+            const pathLength = m.metadata.pathLength;
+            
+            const newPath = [];
+            for (let j = 0; j < pathLength; j++) {
+              const t = j / (pathLength - 1);
+              const angle = t * Math.PI * 4 * curvature + armOffset;
+              let radius = t * 10 * scale;
+              
+              // Apply elasticity deformation similar to flat spiral shader
+              const def = Math.sin(t * 10.0 - this.time * animSpeed * 2.0) * elasticity * 2.0 * scale;
+              radius += def;
+              
+              const x = Math.cos(angle) * radius;
+              const z = Math.sin(angle) * radius;
+              
+              newPath.push(new Vector3(x, 0, z));
+            }
+            
+            MeshBuilder.CreateTube(m.name, { path: newPath, radius: thickness * scale * 0.5, tessellation: 16, instance: m as any });
+          }
         } else {
           m.rotation.y += 0.01 * animSpeed;
           if (type === 'breathing' || type === 'cloud') {
@@ -2313,12 +2446,12 @@ export class SceneManager {
       const animSpeed = config?.textAnimSpeed ?? 1.0;
       const animIntensity = config?.textAnimIntensity ?? 1.0;
 
-      const dist = config?.textDistance ?? 10;
-      const baseScale = dist / 5;
+      const dist = config?.textDistance ?? -5;
+      const baseScale = Math.max(0.1, Math.abs(dist) / 5);
       this.textPlane.scaling = new Vector3(baseScale, baseScale, baseScale);
       this.textPlane.position.x = 0;
       this.textPlane.position.y = 0;
-      this.textPlane.position.z = -5;
+      this.textPlane.position.z = dist;
 
       if (animType === 'zoom') {
         const s = 1.0 + Math.sin(time * 2 * animSpeed) * 0.2 * animIntensity;
@@ -2420,9 +2553,10 @@ export class SceneManager {
       const animIntensity = config?.auxAnimIntensity ?? 1.0;
 
       const dist = config?.auxDistance ?? 10;
-      const baseScale = dist / 5;
+      const baseScale = Math.max(0.1, Math.abs(dist) / 5);
       this.auxTextPlane.scaling = new Vector3(baseScale, baseScale, baseScale);
       this.auxTextPlane.position.y = -2;
+      this.auxTextPlane.position.z = dist;
 
       if (animType === 'zoom') {
         const s = 1.0 + Math.sin(time * 2 * animSpeed) * 0.2 * animIntensity;

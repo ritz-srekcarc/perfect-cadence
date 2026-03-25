@@ -9,7 +9,7 @@ patternComplexity: 10
 patternColor1: #ff00ff
 patternColor2: #00ffff
 cameraRadius: 30
-textSize: 20
-textDistance: 25
+textSize: 100
+textDistance: -5
 binaural: relax
 ```

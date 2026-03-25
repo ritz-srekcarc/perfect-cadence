@@ -9,7 +9,7 @@ patternSpeed: 0.2
 camera: orbit
 cameraSpeed: 0.1
 cameraRadius: 30
-textSize: 20
-textDistance: 25
+textSize: 100
+textDistance: -5
 binaural: sleep
 ```

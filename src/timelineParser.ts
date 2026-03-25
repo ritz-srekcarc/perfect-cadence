@@ -12,7 +12,7 @@
 export interface SegmentConfig {
   duration: number; // in seconds
   patternType: 'fascinator' | 'repetition' | 'cloud' | 'cluster' | 'topology' | string;
-  pattern: 'fractal' | 'mandala' | 'particle' | 'flame' | 'dot' | 'flat spiral' | 'cone spiral' | 'pendulum' | 'tunnel' | 'ring' | 'kaleido' | 'pulse' | 'wave' | 'nautilus spiral' | 'orb' | 'saddle' | 'plane' | 'random voxel surface' | 'random curved surface' | string;
+  pattern: 'fractal' | 'mandala' | 'particle' | 'flame' | 'dot' | 'flat spiral' | 'thicc spiral' | 'cone spiral' | 'pendulum' | 'tunnel' | 'ring' | 'kaleido' | 'pulse' | 'wave' | 'nautilus spiral' | 'orb' | 'saddle' | 'plane' | 'random voxel surface' | 'random curved surface' | string;
   patternSpeed?: number;
   patternScale?: number;
   patternComplexity?: number;
@@ -201,6 +201,7 @@ const VALUE_MAP: Record<string, string> = {
   flame: 'fla',
   dot: 'do',
   'flat spiral': 'fs',
+  'thicc spiral': 'ts',
   pendulum: 'pe',
   wave: 'wav',
   'nautilus spiral': 'ns',
@@ -354,7 +355,7 @@ export const SYNTAX_DOCS = {
   config: {
     duration: "number (seconds)",
     patternType: "string (fascinator, repetition, cloud, cluster, topology)",
-    pattern: "string (fractal, mandala, particle, flame, dot, flat spiral, pendulum, wave, nautilus spiral, orb, saddle, plane, random voxel surface, random curved surface, tunnel, ring, kaleido, pulse)",
+    pattern: "string (fractal, mandala, particle, flame, dot, flat spiral, thicc spiral, pendulum, wave, nautilus spiral, orb, saddle, plane, random voxel surface, random curved surface, tunnel, ring, kaleido, pulse)",
     patternSpeed: "number (multiplier)",
     patternScale: "number (multiplier)",
     patternComplexity: "number (detail level)",

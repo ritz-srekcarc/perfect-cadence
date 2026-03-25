@@ -1041,14 +1041,6 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   </div>
                   <div className="col-span-2">
                     <SliderInput
-                      label="Distance"
-                      min={1} max={50} step={1}
-                      value={(activeBubble.isAux ? seg.config.auxDistance : seg.config.textDistance) ?? 10}
-                      onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxDistance' : 'textDistance', val)}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <SliderInput
                       label="Size"
                       min={10} max={300} step={1}
                       value={(activeBubble.isAux ? seg.config.auxSize : seg.config.textSize) ?? 100}
@@ -1146,6 +1138,14 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       <option value="prism">Prism</option>
                       <option value="glitch">Glitch</option>
                     </select>
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Distance"
+                      min={-50} max={50} step={1}
+                      value={(activeBubble.isAux ? seg.config.auxDistance : seg.config.textDistance) ?? (activeBubble.isAux ? 10 : -5)}
+                      onChange={(val) => updateConfig(index, activeBubble.isAux ? 'auxDistance' : 'textDistance', val)}
+                    />
                   </div>
                   <div className="col-span-2">
                     <SliderInput
@@ -1464,12 +1464,12 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                         <SliderInput label="Spiral Arms" min={1} max={20} step={1} value={seg.config.spiralArms ?? 5} onChange={(val) => updateConfig(index, 'spiralArms', val)} />
                       </div>
                       <div className="col-span-2">
-                        <SliderInput label="Spiral Thickness" min={0.1} max={2} step={0.1} value={seg.config.spiralThickness ?? 0.5} onChange={(val) => updateConfig(index, 'spiralThickness', val)} />
+                        <SliderInput label="Spiral Thickness" min={0.01} max={5} step={0.01} value={seg.config.spiralThickness ?? 0.5} onChange={(val) => updateConfig(index, 'spiralThickness', val)} />
                       </div>
                       <div className="col-span-2">
-                        <SliderInput label="Spiral Curvature" min={0.1} max={5} step={0.1} value={seg.config.spiralCurvature ?? 1.0} onChange={(val) => updateConfig(index, 'spiralCurvature', val)} />
+                        <SliderInput label="Spiral Curvature" min={0} max={5} step={0.1} value={seg.config.spiralCurvature ?? 1.0} onChange={(val) => updateConfig(index, 'spiralCurvature', val)} />
                       </div>
-                      {seg.config.pattern === 'flat spiral' && (
+                      {(seg.config.pattern === 'flat spiral' || seg.config.pattern === 'thicc spiral') && (
                         <div className="col-span-2">
                           <SliderInput label="Spiral Elasticity" min={0} max={1} step={0.01} value={seg.config.spiralElasticity ?? 0.5} onChange={(val) => updateConfig(index, 'spiralElasticity', val)} />
                         </div>
