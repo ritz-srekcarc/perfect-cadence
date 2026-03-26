@@ -145,25 +145,25 @@ export class SceneManager {
           float r = length(uv);
           float angle = atan(uv.y, uv.x);
           
-          // Elasticity deforms the radius based on time and speed
-          float def = sin(r * 10.0 - time * 2.0) * elasticity * 0.2;
-          float rDef = r + def;
+          // Elasticity deforms the angle based on time and speed, matching thicc spiral
+          float def = sin(r * 10.0 - time * 2.0) * elasticity;
           
-          // Spiral formula
-          float spiral = angle * arms + rDef * curvature * 5.0 - time * 5.0;
+          // Spiral formula matching thicc spiral: angle - (r * 4PI + def) * curvature
+          // Multiplied by arms so curvature effect is independent of arm count
+          float spiral = angle * arms - (r * 12.56637 + def) * curvature * arms - time * 5.0;
           float s = sin(spiral);
           
           // Thickness control
-          // thickness is mapped such that larger thickness means thicker arms
-          // s goes from -1 to 1.
-          float threshold = 1.0 - thickness;
-          float mask = smoothstep(threshold, 1.0, s);
+          // Scale thickness so that max thickness (5.0) maps to threshold -1.0
+          float threshold = 1.0 - (thickness * 0.4);
+          // Use a sharper edge for the mask to make it look solid like thicc spiral
+          float mask = smoothstep(threshold, threshold + 0.1, s);
           
           // Outline mask
           float outlineMask = 0.0;
           if (hasOutline > 0.5) {
               // Outline is just outside the threshold
-              outlineMask = smoothstep(threshold - 0.2, threshold, s) - mask;
+              outlineMask = smoothstep(threshold - 0.1, threshold, s) - mask;
           }
           
           // Fade out at edges
@@ -845,25 +845,26 @@ export class SceneManager {
 
     // Reset camera position based on mode
     if (patternChanged || cameraChanged) {
+      const isTunnel = config.pattern === 'tunnel';
       const targetX = config.cameraTargetX ?? 0;
       const targetY = config.cameraTargetY ?? 0;
-      const targetZ = config.cameraTargetZ ?? 0;
+      const targetZ = config.cameraTargetZ ?? (isTunnel ? 1 : 0);
       
       if (config.camera === 'static' || config.camera === 'orbit') {
         this.camera.setTarget(new Vector3(targetX, targetY, targetZ));
         this.camera.alpha = config.cameraAlpha !== undefined ? config.cameraAlpha : -Math.PI / 2;
-        this.camera.beta = config.cameraHeight !== undefined ? config.cameraHeight : Math.PI / 6;
-        this.camera.radius = config.cameraRadius !== undefined ? config.cameraRadius : 15;
+        this.camera.beta = config.cameraHeight !== undefined ? config.cameraHeight : (isTunnel ? Math.PI / 2 : Math.PI / 6);
+        this.camera.radius = config.cameraRadius !== undefined ? config.cameraRadius : (isTunnel ? 1 : 15);
       } else if (config.camera === 'fly') {
-        this.camera.setTarget(new Vector3(targetX, targetY, this.camera.target.z || 50));
+        this.camera.setTarget(new Vector3(targetX, targetY, this.camera.target.z || (isTunnel ? 1 : 50)));
         this.camera.alpha = config.cameraAlpha !== undefined ? config.cameraAlpha : -Math.PI / 2;
         this.camera.beta = config.cameraHeight !== undefined ? config.cameraHeight : Math.PI / 2;
-        this.camera.radius = config.cameraRadius !== undefined ? config.cameraRadius : 5; // Closer to target
+        this.camera.radius = config.cameraRadius !== undefined ? config.cameraRadius : (isTunnel ? 1 : 5); // Closer to target
       } else if (config.camera === 'pan') {
         this.camera.setTarget(new Vector3(targetX, targetY, targetZ));
         this.camera.alpha = config.cameraAlpha !== undefined ? config.cameraAlpha : -Math.PI / 2;
         this.camera.beta = config.cameraHeight !== undefined ? config.cameraHeight : Math.PI / 2;
-        this.camera.radius = config.cameraRadius !== undefined ? config.cameraRadius : 8; // Zoomed further in
+        this.camera.radius = config.cameraRadius !== undefined ? config.cameraRadius : (isTunnel ? 1 : 8); // Zoomed further in
       }
     } else {
       // If only advanced camera options changed, apply them without resetting alpha/beta if not static
@@ -923,6 +924,7 @@ export class SceneManager {
     const type = this.currentConfig?.patternType || 'fascinator';
     const pattern = this.currentConfig?.pattern || 'cone spiral';
     const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
     const scale = this.currentConfig?.patternScale ?? 1.0;
     
     const material = new StandardMaterial("spiralMat", this.scene);
@@ -940,7 +942,7 @@ export class SceneManager {
     for (let a = 0; a < arms; a++) {
       const armOffset = (Math.PI * 2 / arms) * a;
       const paths = [];
-      const numPaths = pattern === 'nautilus spiral' || type === 'infinite' ? 40 : 20;
+      const numPaths = Math.floor((pattern === 'nautilus spiral' || type === 'infinite' ? 40 : 20) * density);
       const pathLength = pattern === 'vortex' || type === 'vortex' || pattern === 'helix' ? 400 : 200;
       
       for (let i = 0; i < numPaths; i++) {
@@ -974,13 +976,16 @@ export class SceneManager {
 
   private createTunnel() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
+    const radius = this.currentConfig?.patternRadius ?? 7.5;
+    const length = this.currentConfig?.patternLength ?? 100;
     const material = new StandardMaterial("tunnelMat", this.scene);
     material.emissiveColor = this.getPaletteColor(0, new Color3(1.0, 0.3, 0.8));
     material.wireframe = true;
     material.alpha = 0.3;
     material.backFaceCulling = false;
 
-    const cylinder = MeshBuilder.CreateCylinder("tunnel", { height: 100 * scale, diameter: 15 * scale, tessellation: 32, subdivisions: 50 }, this.scene);
+    const cylinder = MeshBuilder.CreateCylinder("tunnel", { height: length * scale, diameter: radius * 2 * scale * thickness, tessellation: 32, subdivisions: 50 }, this.scene);
     cylinder.parent = this.patternRoot;
     cylinder.rotation.x = Math.PI / 2;
     cylinder.material = material;
@@ -991,6 +996,8 @@ export class SceneManager {
     const type = this.currentConfig?.patternType || 'default';
     const pattern = this.currentConfig?.pattern || 'ring';
     const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
     const scale = this.currentConfig?.patternScale ?? 1.0;
     
     const material = new StandardMaterial("ringsMat", this.scene);
@@ -998,7 +1005,7 @@ export class SceneManager {
     material.wireframe = true;
     material.alpha = 0.6;
     
-    const baseTorus = MeshBuilder.CreateTorus("base", { diameter: 2 * scale, thickness: 0.1 * scale, tessellation: 32 }, this.scene);
+    const baseTorus = MeshBuilder.CreateTorus("base", { diameter: 2 * scale, thickness: 0.1 * scale * thickness, tessellation: 32 }, this.scene);
     baseTorus.parent = this.patternRoot;
     baseTorus.material = material;
     this.currentMeshes.push(baseTorus);
@@ -1008,7 +1015,7 @@ export class SceneManager {
       return;
     }
 
-    const count = Math.floor(100 * complexity);
+    const count = Math.floor(100 * complexity * density);
 
     for (let i = 0; i < count; i++) {
       const instance = baseTorus.createInstance("i" + i);
@@ -1062,8 +1069,10 @@ export class SceneManager {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
     const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
     
-    const ps = new ParticleSystem("particles", Math.floor(2000 * complexity), this.scene);
+    const ps = new ParticleSystem("particles", Math.floor(2000 * complexity * density), this.scene);
     this.particleSystems.push(ps);
     ps.particleTexture = new Texture("https://raw.githubusercontent.com/PatrickRyanMS/BabylonJStextures/master/ParticleSystems/Sun/T_Sunflare.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
@@ -1072,8 +1081,8 @@ export class SceneManager {
     ps.color1 = this.getPaletteColor(0, new Color3(0.7, 0.8, 1.0)).toColor4(1);
     ps.color2 = this.getPaletteColor(1, new Color3(0.2, 0.5, 1.0)).toColor4(1);
     ps.colorDead = new Color3(0, 0, 0.2).toColor4(0);
-    ps.minSize = 0.1 * scale;
-    ps.maxSize = 0.5 * scale;
+    ps.minSize = 0.1 * scale * thickness;
+    ps.maxSize = 0.5 * scale * thickness;
     ps.minLifeTime = 1;
     ps.maxLifeTime = 3;
     this.baseEmitRate = Math.floor(500 * complexity);
@@ -1086,7 +1095,7 @@ export class SceneManager {
     ps.maxAngularSpeed = Math.PI;
     ps.minEmitPower = 1;
     ps.maxEmitPower = 3;
-    ps.updateSpeed = 0.005 * speed;
+    ps.updateSpeed = 0.005 * Math.abs(speed);
     ps.start();
   }
 
@@ -1094,13 +1103,15 @@ export class SceneManager {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
     const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
     
     const root = new Mesh("flameRoot", this.scene);
     root.parent = this.patternRoot;
     this.currentMeshes.push(root);
 
     // Create the flame particle system
-    const ps = new ParticleSystem("flame", Math.floor(1000 * complexity), this.scene);
+    const ps = new ParticleSystem("flame", Math.floor(1000 * complexity * density), this.scene);
     this.particleSystems.push(ps);
     ps.particleTexture = new Texture("https://raw.githubusercontent.com/PatrickRyanMS/BabylonJStextures/master/ParticleSystems/Sun/T_Sunflare.png", this.scene);
     
@@ -1111,7 +1122,7 @@ export class SceneManager {
     this.currentMeshes.push(emitterMesh);
 
     // Cone emitter
-    ps.createConeEmitter(0.1 * scale, Math.PI / 16);
+    ps.createConeEmitter(0.1 * scale * thickness, Math.PI / 16);
     
     // Colors
     const color1 = this.getPaletteColor(0, new Color3(1.0, 0.8, 0.2));
@@ -1130,7 +1141,7 @@ export class SceneManager {
     ps.gravity = new Vector3(0, 12 * scale, 0);
     ps.minEmitPower = 1.0 * scale;
     ps.maxEmitPower = 3.0 * scale;
-    ps.updateSpeed = 0.01 * speed;
+    ps.updateSpeed = 0.01 * Math.abs(speed);
     
     // Add size gradient to make it look like a teardrop
     ps.addSizeGradient(0, 0.5 * scale);
@@ -1143,8 +1154,10 @@ export class SceneManager {
   private createPendulum() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    const length = this.currentConfig?.patternLength ?? 8;
     const color1 = this.getPaletteColor(0, new Color3(0.8, 0.8, 0.8)); // Chain color
     const color2 = this.getPaletteColor(1, new Color3(0.2, 0.5, 1.0)); // Pendant color
+    const color3 = this.getPaletteColor(2, color2); // Pendant glow/wireframe color
 
     const root = new Mesh("pendulumRoot", this.scene);
     root.parent = this.patternRoot;
@@ -1154,7 +1167,7 @@ export class SceneManager {
     root.position.y = 5 * scale;
 
     // Chain
-    const chainLength = 8 * scale;
+    const chainLength = length * scale;
     const chain = MeshBuilder.CreateCylinder("chain", { height: chainLength, diameter: 0.1 * scale }, this.scene);
     chain.parent = root;
     chain.position.y = -chainLength / 2;
@@ -1180,7 +1193,7 @@ export class SceneManager {
     glow.parent = pendant;
     glow.scaling.y = 1.5;
     const glowMat = new StandardMaterial("glowMat", this.scene);
-    glowMat.emissiveColor = color2;
+    glowMat.emissiveColor = color3;
     glowMat.alpha = 0.3;
     glowMat.wireframe = true;
     glowMat.disableLighting = true;
@@ -1300,8 +1313,9 @@ export class SceneManager {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
     const speed = this.currentConfig?.patternSpeed ?? 1.0;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
     
-    const ps = new ParticleSystem("nebula", Math.floor(3000 * complexity), this.scene);
+    const ps = new ParticleSystem("nebula", Math.floor(3000 * complexity * density), this.scene);
     this.particleSystems.push(ps);
     ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/cloud.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
@@ -1317,7 +1331,7 @@ export class SceneManager {
     ps.maxSize = 15 * scale;
     ps.minLifeTime = 5;
     ps.maxLifeTime = 10;
-    this.baseEmitRate = Math.floor(150 * complexity);
+    this.baseEmitRate = Math.floor(150 * complexity * density);
     ps.emitRate = this.baseEmitRate;
     ps.blendMode = ParticleSystem.BLENDMODE_ADD;
     
@@ -1329,7 +1343,7 @@ export class SceneManager {
     ps.maxAngularSpeed = 0.2;
     ps.minEmitPower = 0.1;
     ps.maxEmitPower = 0.5;
-    ps.updateSpeed = 0.005 * speed;
+    ps.updateSpeed = 0.005 * Math.abs(speed);
     
     const noiseTexture = new NoiseProceduralTexture("nebulaNoise", 256, this.scene);
     noiseTexture.animationSpeedFactor = 0.5 * speed;
@@ -1376,7 +1390,7 @@ export class SceneManager {
     ps.maxAngularSpeed = 1;
     ps.minEmitPower = 0.5;
     ps.maxEmitPower = 1.5;
-    ps.updateSpeed = 0.01 * speed;
+    ps.updateSpeed = 0.01 * Math.abs(speed);
 
     // Make smoke expand as it rises
     ps.addSizeGradient(0, 1 * scale);
@@ -1423,7 +1437,7 @@ export class SceneManager {
     ps.maxAngularSpeed = 2;
     ps.minEmitPower = 1;
     ps.maxEmitPower = 3;
-    ps.updateSpeed = 0.015 * speed;
+    ps.updateSpeed = 0.015 * Math.abs(speed);
     
     const noiseTexture = new NoiseProceduralTexture("fluidNoise", 256, this.scene);
     noiseTexture.animationSpeedFactor = 5 * speed;
@@ -1469,7 +1483,7 @@ export class SceneManager {
     ps.maxAngularSpeed = 5;
     ps.minEmitPower = 2;
     ps.maxEmitPower = 6;
-    ps.updateSpeed = 0.02 * speed;
+    ps.updateSpeed = 0.02 * Math.abs(speed);
     
     const noiseTexture = new NoiseProceduralTexture("swarmNoise", 256, this.scene);
     noiseTexture.animationSpeedFactor = 10 * speed;
@@ -1515,7 +1529,7 @@ export class SceneManager {
     ps.maxAngularSpeed = 0.1;
     ps.minEmitPower = 0;
     ps.maxEmitPower = 0.1;
-    ps.updateSpeed = 0.005 * speed;
+    ps.updateSpeed = 0.005 * Math.abs(speed);
     
     // Twinkle effect
     ps.addColorGradient(0, new Color3(0, 0, 0).toColor4(0));
@@ -1558,7 +1572,7 @@ export class SceneManager {
     
     ps.minEmitPower = 1;
     ps.maxEmitPower = 3;
-    ps.updateSpeed = 0.01 * speed;
+    ps.updateSpeed = 0.01 * Math.abs(speed);
     
     ps.start();
   }
@@ -1566,12 +1580,13 @@ export class SceneManager {
   private createWheel() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
     const color = this.getPaletteColor(0, new Color3(1, 1, 1));
 
     const root = new Mesh("wheelRoot", this.scene);
     root.parent = this.patternRoot;
 
-    const segments = Math.floor(12 * complexity);
+    const segments = Math.floor(12 * complexity * density);
     for (let i = 0; i < segments; i++) {
       const angle = (i / segments) * Math.PI * 2;
       const spoke = MeshBuilder.CreateBox(`spoke_${i}`, { width: 0.1 * scale, height: 5 * scale, depth: 0.1 * scale }, this.scene);
@@ -1598,6 +1613,8 @@ export class SceneManager {
 
   private createDial() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
     const color = this.getPaletteColor(0, new Color3(1, 1, 1));
     const color2 = this.getPaletteColor(1, new Color3(1, 0, 0));
 
@@ -1613,9 +1630,10 @@ export class SceneManager {
     face.material = faceMat;
     this.currentMeshes.push(face);
 
-    for (let i = 0; i < 12; i++) {
-      const angle = (i / 12) * Math.PI * 2;
-      const tick = MeshBuilder.CreateBox(`tick_${i}`, { width: 0.05 * scale, height: 0.5 * scale, depth: 0.05 * scale }, this.scene);
+    const tickCount = Math.floor(12 * density);
+    for (let i = 0; i < tickCount; i++) {
+      const angle = (i / tickCount) * Math.PI * 2;
+      const tick = MeshBuilder.CreateBox(`tick_${i}`, { width: 0.05 * scale * thickness, height: 0.5 * scale, depth: 0.05 * scale * thickness }, this.scene);
       tick.parent = root;
       tick.position.set(Math.cos(angle) * 2.7 * scale, Math.sin(angle) * 2.7 * scale, 0);
       tick.rotation.z = angle;
@@ -1626,7 +1644,7 @@ export class SceneManager {
       this.currentMeshes.push(tick);
     }
 
-    const hand = MeshBuilder.CreateBox("hand", { width: 0.1 * scale, height: 2.5 * scale, depth: 0.1 * scale }, this.scene);
+    const hand = MeshBuilder.CreateBox("hand", { width: 0.1 * scale * thickness, height: 2.5 * scale, depth: 0.1 * scale * thickness }, this.scene);
     hand.parent = root;
     hand.setPivotPoint(new Vector3(0, -1.25 * scale, 0));
     hand.position.y = 1.25 * scale;
@@ -1639,13 +1657,14 @@ export class SceneManager {
 
   private createClock() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
     const color = this.getPaletteColor(0, new Color3(1, 1, 1));
 
     const root = new Mesh("clockRoot", this.scene);
     root.parent = this.patternRoot;
 
     // Hour hand
-    const hourHand = MeshBuilder.CreateBox("hourHand", { width: 0.15 * scale, height: 1.5 * scale, depth: 0.1 * scale }, this.scene);
+    const hourHand = MeshBuilder.CreateBox("hourHand", { width: 0.15 * scale * thickness, height: 1.5 * scale, depth: 0.1 * scale * thickness }, this.scene);
     hourHand.parent = root;
     hourHand.setPivotPoint(new Vector3(0, -0.75 * scale, 0));
     hourHand.position.y = 0.75 * scale;
@@ -1656,7 +1675,7 @@ export class SceneManager {
     this.currentMeshes.push(hourHand);
 
     // Minute hand
-    const minuteHand = MeshBuilder.CreateBox("minuteHand", { width: 0.1 * scale, height: 2.5 * scale, depth: 0.1 * scale }, this.scene);
+    const minuteHand = MeshBuilder.CreateBox("minuteHand", { width: 0.1 * scale * thickness, height: 2.5 * scale, depth: 0.1 * scale * thickness }, this.scene);
     minuteHand.parent = root;
     minuteHand.setPivotPoint(new Vector3(0, -1.25 * scale, 0));
     minuteHand.position.y = 1.25 * scale;
@@ -1682,8 +1701,10 @@ export class SceneManager {
 
   private createFlatSpiral() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
-    const arms = this.currentConfig?.spiralArms ?? 5;
-    const thickness = this.currentConfig?.spiralThickness ?? 0.5;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    const patternThickness = this.currentConfig?.patternThickness ?? 1.0;
+    const arms = (this.currentConfig?.spiralArms ?? 5) * density;
+    const thickness = (this.currentConfig?.spiralThickness ?? 0.5) * patternThickness;
     const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
     const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
 
@@ -1711,8 +1732,10 @@ export class SceneManager {
 
   private createThiccSpiral() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
-    const arms = this.currentConfig?.spiralArms ?? 5;
-    const thickness = this.currentConfig?.spiralThickness ?? 0.5;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    const patternThickness = this.currentConfig?.patternThickness ?? 1.0;
+    const arms = Math.floor((this.currentConfig?.spiralArms ?? 5) * density);
+    const thickness = (this.currentConfig?.spiralThickness ?? 0.5) * patternThickness;
     const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
     const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
     
@@ -1733,30 +1756,42 @@ export class SceneManager {
       
       for (let j = 0; j < pathLength; j++) {
         const t = j / (pathLength - 1);
-        const angle = t * Math.PI * 4 * curvature + armOffset;
-        let radius = t * 10 * scale;
         
-        // Apply elasticity deformation similar to flat spiral shader
-        // In shader, r goes from 0 to 1, and def is sin(r * 10.0 - time * 2.0) * elasticity * 0.2
-        // Here t goes from 0 to 1, and we scale the deformation by 10 * scale to match world size
-        const def = Math.sin(t * 10.0 - this.time * (this.currentConfig?.patternSpeed ?? 1.0) * 2.0) * elasticity * 2.0 * scale;
-        radius += def;
+        // Apply elasticity deformation to the angle, not the radius.
+        // This ensures the radius is strictly increasing, preventing the tube from folding on itself.
+        // If curvature is 0, angle = armOffset, making it perfectly straight.
+        const def = Math.sin(t * 10.0 - this.time * (this.currentConfig?.patternSpeed ?? 1.0) * 2.0) * elasticity;
+        const angle = armOffset + (t * Math.PI * 4 + def) * curvature;
+        const radius = t * 10 * scale;
         
+        // Create on XY plane so it faces the camera
         const x = Math.cos(angle) * radius;
-        const z = Math.sin(angle) * radius;
+        const y = Math.sin(angle) * radius;
         
-        path.push(new Vector3(x, 0, z));
+        path.push(new Vector3(x, y, 0));
       }
+
+      const tubeRadiusFunc = (i: number, distance: number) => {
+        const t = i / (pathLength - 1);
+        const currentRadius = t * 10 * scale;
+        // Cap the thickness based on available circumference to prevent overlap
+        // Circumference = 2 * PI * R. Max width per arm = 2 * PI * R / arms.
+        // Max radius per arm = PI * R / arms.
+        const maxTubeRadius = (Math.PI * currentRadius) / arms;
+        const baseTubeRadius = thickness * scale * 0.5;
+        // Keep a tiny minimum radius so Babylon doesn't throw errors
+        return Math.max(0.001, Math.min(baseTubeRadius, maxTubeRadius));
+      };
 
       const tube = MeshBuilder.CreateTube(`thicc_spiral_${a}`, { 
         path: path, 
-        radius: thickness * scale * 0.5, 
+        radiusFunction: tubeRadiusFunc, 
         tessellation: 16,
         updatable: true 
       }, this.scene);
       
-      // Flatten the tube on Y for an oval cross-section
-      tube.scaling.y = 0.3;
+      // Flatten the tube on Z for an oval cross-section (since it's on the XY plane)
+      tube.scaling.z = 0.3;
       
       // Store parameters for animation
       tube.metadata = { armIndex: a, armOffset, pathLength };
@@ -1812,10 +1847,11 @@ export class SceneManager {
 
   private createDot() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
     const color1 = this.getPaletteColor(0, new Color3(1, 1, 1));
     const color2 = this.getPaletteColor(1, new Color3(1, 1, 0.8));
 
-    const dot = MeshBuilder.CreateSphere("dot", { diameter: 0.5 * scale }, this.scene);
+    const dot = MeshBuilder.CreateSphere("dot", { diameter: 0.5 * scale * thickness }, this.scene);
     dot.parent = this.patternRoot;
     
     const material = new StandardMaterial("dotMat", this.scene);
@@ -1824,7 +1860,7 @@ export class SceneManager {
     dot.material = material;
 
     // Add a glow effect
-    const glow = MeshBuilder.CreateSphere("dotGlow", { diameter: 1.5 * scale }, this.scene);
+    const glow = MeshBuilder.CreateSphere("dotGlow", { diameter: 1.5 * scale * thickness }, this.scene);
     glow.parent = dot;
     const glowMat = new StandardMaterial("glowMat", this.scene);
     glowMat.emissiveColor = color2;
@@ -1839,6 +1875,8 @@ export class SceneManager {
   private createMandala() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
     const type = this.currentConfig?.patternType || 'default';
     const pattern = this.currentConfig?.pattern || 'mandala';
     
@@ -1847,8 +1885,9 @@ export class SceneManager {
     material.wireframe = true;
     material.alpha = 0.7;
 
-    const layers = Math.floor(5 * complexity);
-    const pointsPerLayer = pattern === 'polygon' ? 6 : (type === 'hypnotic' ? 16 : 8);
+    const layers = Math.floor(5 * complexity * density);
+    const defaultPoints = pattern === 'polygon' ? 6 : (type === 'hypnotic' ? 16 : 8);
+    const pointsPerLayer = this.currentConfig?.patternDensity ?? defaultPoints;
 
     for (let l = 1; l <= layers; l++) {
       const radius = l * 2 * scale;
@@ -1867,7 +1906,7 @@ export class SceneManager {
       
       // Add a rotating torus for each layer
       if (type === 'breathing' || pattern === 'polygon') {
-        const torus = MeshBuilder.CreateTorus(`mandala_t_${l}`, { diameter: radius * 2, thickness: 0.05, tessellation: pointsPerLayer }, this.scene);
+        const torus = MeshBuilder.CreateTorus(`mandala_t_${l}`, { diameter: radius * 2, thickness: 0.05 * thickness, tessellation: pointsPerLayer }, this.scene);
         torus.parent = this.patternRoot;
         torus.material = material;
         torus.rotation.x = Math.PI / 2;
@@ -1879,6 +1918,8 @@ export class SceneManager {
   private createKaleidoscope() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
     const type = this.currentConfig?.patternType || 'default';
     
     const material = new StandardMaterial("kaleidoMat", this.scene);
@@ -1886,7 +1927,7 @@ export class SceneManager {
     material.wireframe = true;
     material.alpha = 0.6;
 
-    const baseShape = MeshBuilder.CreateCylinder("baseShape", { diameterTop: 0, diameterBottom: 4 * scale, height: 6 * scale, tessellation: 3 }, this.scene);
+    const baseShape = MeshBuilder.CreateCylinder("baseShape", { diameterTop: 0, diameterBottom: 4 * scale * thickness, height: 6 * scale * thickness, tessellation: 3 }, this.scene);
     baseShape.parent = this.patternRoot;
     baseShape.material = material;
     baseShape.rotation.x = Math.PI / 2;
@@ -1897,7 +1938,7 @@ export class SceneManager {
       return;
     }
 
-    const segments = Math.floor(8 * complexity);
+    const segments = Math.floor(8 * complexity * density);
     for (let i = 1; i < segments; i++) {
       const instance = baseShape.createInstance("k_" + i);
       instance.parent = this.patternRoot;
@@ -1911,6 +1952,7 @@ export class SceneManager {
   private createWaves() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
     
     const material = new StandardMaterial("wavesMat", this.scene);
     material.emissiveColor = this.getPaletteColor(0, new Color3(0.2, 0.5, 1.0));
@@ -1918,7 +1960,7 @@ export class SceneManager {
     material.alpha = 0.5;
 
     const size = 20 * scale;
-    const subdivisions = Math.floor(40 * complexity);
+    const subdivisions = Math.floor(40 * complexity * density);
     
     const ground = MeshBuilder.CreateGround("waves", { width: size, height: size, subdivisions, updatable: true }, this.scene);
     ground.parent = this.patternRoot;
@@ -1932,15 +1974,21 @@ export class SceneManager {
   private createOrb() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
     const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const density = this.currentConfig?.patternDensity ?? 32;
+    const thickness = this.currentConfig?.patternThickness ?? 1.0;
+    const spacing = (this.currentConfig?.patternSpacing ?? 2) * thickness;
     
     const material = new StandardMaterial("orbMat", this.scene);
     material.emissiveColor = this.getPaletteColor(0, new Color3(1.0, 0.2, 0.2));
     material.wireframe = true;
     material.alpha = 0.8;
 
-    const count = Math.floor(5 * complexity);
-    for (let i = 0; i < count; i++) {
-      const sphere = MeshBuilder.CreateSphere(`orb_${i}`, { diameter: (i + 1) * 2 * scale, segments: 32 }, this.scene);
+    const count = Math.floor(5 * complexity * (this.currentConfig?.patternDensity ? 1 : 1)); // density is already used for segments, but we can use it for count if it's not explicitly for segments
+    // Actually, let's just use complexity for count and density for segments as it was.
+    // But we can use density to influence count too if we want.
+    const orbCount = Math.floor(5 * complexity);
+    for (let i = 0; i < orbCount; i++) {
+      const sphere = MeshBuilder.CreateSphere(`orb_${i}`, { diameter: (i + 1) * spacing * scale, segments: density }, this.scene);
       sphere.parent = this.patternRoot;
       sphere.material = material;
       this.currentMeshes.push(sphere);
@@ -2200,26 +2248,37 @@ export class SceneManager {
             const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
             const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
             const thickness = this.currentConfig?.spiralThickness ?? 0.5;
+            const arms = this.currentConfig?.spiralArms ?? 5;
             const armOffset = m.metadata.armOffset;
             const pathLength = m.metadata.pathLength;
             
             const newPath = [];
             for (let j = 0; j < pathLength; j++) {
               const t = j / (pathLength - 1);
-              const angle = t * Math.PI * 4 * curvature + armOffset;
-              let radius = t * 10 * scale;
-              
-              // Apply elasticity deformation similar to flat spiral shader
-              const def = Math.sin(t * 10.0 - this.time * animSpeed * 2.0) * elasticity * 2.0 * scale;
-              radius += def;
+              const def = Math.sin(t * 10.0 - this.time * animSpeed * 2.0) * elasticity;
+              const angle = armOffset + (t * Math.PI * 4 + def) * curvature;
+              const radius = t * 10 * scale;
               
               const x = Math.cos(angle) * radius;
-              const z = Math.sin(angle) * radius;
+              const y = Math.sin(angle) * radius;
               
-              newPath.push(new Vector3(x, 0, z));
+              newPath.push(new Vector3(x, y, 0));
             }
             
-            MeshBuilder.CreateTube(m.name, { path: newPath, radius: thickness * scale * 0.5, tessellation: 16, instance: m as any });
+            const tubeRadiusFunc = (i: number, distance: number) => {
+              const t = i / (pathLength - 1);
+              const currentRadius = t * 10 * scale;
+              const maxTubeRadius = (Math.PI * currentRadius) / arms;
+              const baseTubeRadius = thickness * scale * 0.5;
+              return Math.max(0.001, Math.min(baseTubeRadius, maxTubeRadius));
+            };
+            
+            MeshBuilder.CreateTube(m.name, { 
+              path: newPath, 
+              radiusFunction: tubeRadiusFunc, 
+              tessellation: 16, 
+              instance: m as any 
+            });
           }
         } else {
           m.rotation.y += 0.01 * animSpeed;
@@ -2252,11 +2311,16 @@ export class SceneManager {
         }
       });
     } else if (pattern === 'tunnel' && this.currentMeshes.length > 0) {
-      this.currentMeshes[0].rotation.y += 0.002 * animSpeed;
+      const scale = this.currentConfig.patternScale ?? 1.0;
+      const length = this.currentConfig.patternLength ?? 100;
+      const segmentLength = (length * scale) / 50; // 2 * scale
+      const offset = (this.time * animSpeed * 5) % segmentLength;
+      
       if (this.currentConfig.camera === 'fly') {
-        this.currentMeshes[0].position.z = Math.floor(this.camera.target.z / 2) * 2;
+        const baseZ = Math.floor(this.camera.target.z / segmentLength) * segmentLength;
+        this.currentMeshes[0].position.z = baseZ - offset;
       } else {
-        this.currentMeshes[0].position.z = 0;
+        this.currentMeshes[0].position.z = -offset;
       }
     } else if (pattern === 'ring' || pattern === 'grid') {
       this.currentMeshes.forEach((m, i) => {
@@ -2284,6 +2348,7 @@ export class SceneManager {
       const positions = ground.getVerticesData(VertexBuffer.PositionKind);
       const amp = this.currentConfig?.topologyAmplitude ?? 1.0;
       const freq = this.currentConfig?.topologyFrequency ?? 1.0;
+      const roughness = this.currentConfig?.patternRoughness ?? 1.0;
       
       if (positions) {
         for (let i = 0; i < positions.length; i += 3) {
@@ -2300,11 +2365,12 @@ export class SceneManager {
             positions[i + 1] = 0;
           } else if (pattern === 'random voxel surface') {
             const val = amp * Math.sin(x * freq * 0.5 + this.time * animSpeed) * Math.cos(z * freq * 0.5 + this.time * animSpeed);
-            positions[i + 1] = Math.floor(val * 2) / 2;
+            const step = 2 / roughness;
+            positions[i + 1] = Math.floor(val * step) / step;
           } else if (pattern === 'random curved surface') {
             const val1 = Math.sin(x * freq * 0.5 + this.time * animSpeed) * Math.cos(z * freq * 0.5 + this.time * animSpeed);
-            const val2 = Math.sin(x * freq * 1.2 - this.time * 1.5) * Math.cos(z * freq * 0.8 + this.time * 0.5);
-            positions[i + 1] = amp * (val1 + val2 * 0.5);
+            const val2 = Math.sin(x * freq * 1.2 * roughness - this.time * 1.5) * Math.cos(z * freq * 0.8 * roughness + this.time * 0.5);
+            positions[i + 1] = amp * (val1 + val2 * 0.5 * roughness);
           } else {
             positions[i + 1] = Math.sin(x * 0.5 + this.time * 2 * animSpeed) * Math.cos(z * 0.5 + this.time * 2 * animSpeed);
           }

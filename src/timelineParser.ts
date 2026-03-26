@@ -24,6 +24,12 @@ export interface SegmentConfig {
   spiralThickness?: number;
   spiralCurvature?: number;
   spiralElasticity?: number;
+  patternRadius?: number;
+  patternLength?: number;
+  patternRoughness?: number;
+  patternDensity?: number;
+  patternSpacing?: number;
+  patternThickness?: number;
   patternSpin?: number;
   patternRotation?: number;
   patternTumble?: number;
@@ -127,6 +133,12 @@ const KEY_MAP: Record<string, string> = {
   spiralThickness: 'st',
   spiralCurvature: 'sc',
   spiralElasticity: 'se',
+  patternRadius: 'prad',
+  patternLength: 'plen',
+  patternRoughness: 'prou',
+  patternDensity: 'pden',
+  patternSpacing: 'pspa',
+  patternThickness: 'pthi',
   patternSpin: 'psn',
   patternRotation: 'prt',
   patternTumble: 'ptm',
@@ -365,6 +377,12 @@ export const SYNTAX_DOCS = {
     spiralArms: "number",
     spiralThickness: "number",
     spiralCurvature: "number",
+    patternRadius: "number",
+    patternLength: "number",
+    patternRoughness: "number",
+    patternDensity: "number",
+    patternSpacing: "number",
+    patternThickness: "number",
     camera: "string (orbit, fly, static, pan)",
     cameraSpeed: "number (multiplier)",
     cameraRadius: "number (distance from target)",
@@ -455,7 +473,7 @@ export function parseTimeline(markdown: string): TimelineSegment[] {
         if (key && valueParts.length > 0) {
           const val = valueParts.join(':').trim();
           const k = key.trim() as keyof SegmentConfig;
-          if (k === 'duration' || k === 'metronome' || k === 'carrierFreq' || k === 'beatFreq' || k === 'ampModulation' || k === 'cameraSpeed' || k === 'patternSpeed' || k === 'patternScale' || k === 'patternComplexity' || k === 'cameraRadius' || k === 'cameraHeight' || k === 'cameraAlpha' || k === 'cameraTargetX' || k === 'cameraTargetY' || k === 'cameraTargetZ' || k === 'cameraFov' || k === 'textDistance' || k === 'textSize' || k === 'textAnimSpeed' || k === 'textAnimIntensity' || k === 'auxDistance' || k === 'auxSize' || k === 'auxAnimSpeed' || k === 'auxAnimIntensity' || k === 'speech_speed' || k === 'repetitionCount' || k === 'clusterCount' || k === 'clusterChaos' || k === 'textOutlineWidth' || k === 'auxOutlineWidth' || k === 'topologyAmplitude' || k === 'topologyFrequency' || k === 'spiralArms' || k === 'spiralThickness' || k === 'spiralCurvature' || k === 'spiralElasticity' || k === 'patternSpin' || k === 'patternRotation' || k === 'patternTumble' || k === 'baseSpin' || k === 'baseRotation' || k === 'baseTumble') {
+          if (k === 'duration' || k === 'metronome' || k === 'carrierFreq' || k === 'beatFreq' || k === 'ampModulation' || k === 'cameraSpeed' || k === 'patternSpeed' || k === 'patternScale' || k === 'patternComplexity' || k === 'cameraRadius' || k === 'cameraHeight' || k === 'cameraAlpha' || k === 'cameraTargetX' || k === 'cameraTargetY' || k === 'cameraTargetZ' || k === 'cameraFov' || k === 'textDistance' || k === 'textSize' || k === 'textAnimSpeed' || k === 'textAnimIntensity' || k === 'auxDistance' || k === 'auxSize' || k === 'auxAnimSpeed' || k === 'auxAnimIntensity' || k === 'speech_speed' || k === 'repetitionCount' || k === 'clusterCount' || k === 'clusterChaos' || k === 'textOutlineWidth' || k === 'auxOutlineWidth' || k === 'topologyAmplitude' || k === 'topologyFrequency' || k === 'spiralArms' || k === 'spiralThickness' || k === 'spiralCurvature' || k === 'spiralElasticity' || k === 'patternRadius' || k === 'patternLength' || k === 'patternRoughness' || k === 'patternDensity' || k === 'patternSpacing' || k === 'patternThickness' || k === 'patternSpin' || k === 'patternRotation' || k === 'patternTumble' || k === 'baseSpin' || k === 'baseRotation' || k === 'baseTumble') {
             (config as any)[k] = parseFloat(val);
           } else if (k === 'textShading' || k === 'textBackdrop' || k === 'auxShading' || k === 'auxBackdrop' || k === 'speech_synth' || k === 'patternFaceCamera' || k === 'textFaceCamera') {
             (config as any)[k] = val === 'true';
@@ -503,7 +521,7 @@ export function serializeTimeline(segments: TimelineSegment[]): string {
     let configStr = '';
     const c = seg.config as any;
     
-    const keys = ['duration', 'pattern', 'patternType', 'repetitionCount', 'repetitionBasePattern', 'repetitionAnimation', 'clusterCount', 'clusterBasePattern', 'clusterChaos', 'cloudAnimation', 'topologyAmplitude', 'topologyFrequency', 'patternSpeed', 'patternScale', 'patternComplexity', 'palette', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'spiralArms', 'spiralThickness', 'spiralCurvature', 'spiralElasticity', 'patternSpin', 'patternRotation', 'patternTumble', 'baseSpin', 'baseRotation', 'baseTumble', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraAlpha', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textOutlineWidth', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxOutlineWidth', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
+    const keys = ['duration', 'pattern', 'patternType', 'repetitionCount', 'repetitionBasePattern', 'repetitionAnimation', 'clusterCount', 'clusterBasePattern', 'clusterChaos', 'cloudAnimation', 'topologyAmplitude', 'topologyFrequency', 'patternSpeed', 'patternScale', 'patternComplexity', 'palette', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'spiralArms', 'spiralThickness', 'spiralCurvature', 'spiralElasticity', 'patternRadius', 'patternLength', 'patternRoughness', 'patternDensity', 'patternSpacing', 'patternThickness', 'patternSpin', 'patternRotation', 'patternTumble', 'baseSpin', 'baseRotation', 'baseTumble', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraAlpha', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textOutlineWidth', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxOutlineWidth', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
     
     for (const key of keys) {
       if (c[key] !== undefined && (index === 0 || c[key] !== (lastConfig as any)[key])) {
@@ -542,7 +560,7 @@ export function minifyMarkdown(markdown: string): string {
     
     let configStr = '';
     const c = seg.config as any;
-    const keys = ['duration', 'pattern', 'patternType', 'repetitionCount', 'repetitionBasePattern', 'repetitionAnimation', 'clusterCount', 'clusterBasePattern', 'clusterChaos', 'cloudAnimation', 'topologyAmplitude', 'topologyFrequency', 'patternSpeed', 'patternScale', 'patternComplexity', 'palette', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'spiralArms', 'spiralThickness', 'spiralCurvature', 'spiralElasticity', 'patternSpin', 'patternRotation', 'patternTumble', 'baseSpin', 'baseRotation', 'baseTumble', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraAlpha', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textOutlineWidth', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxOutlineWidth', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
+    const keys = ['duration', 'pattern', 'patternType', 'repetitionCount', 'repetitionBasePattern', 'repetitionAnimation', 'clusterCount', 'clusterBasePattern', 'clusterChaos', 'cloudAnimation', 'topologyAmplitude', 'topologyFrequency', 'patternSpeed', 'patternScale', 'patternComplexity', 'palette', 'patternColor1', 'patternColor2', 'patternFaceCamera', 'spiralArms', 'spiralThickness', 'spiralCurvature', 'spiralElasticity', 'patternRadius', 'patternLength', 'patternRoughness', 'patternDensity', 'patternSpacing', 'patternThickness', 'patternSpin', 'patternRotation', 'patternTumble', 'baseSpin', 'baseRotation', 'baseTumble', 'camera', 'cameraSpeed', 'cameraRadius', 'cameraHeight', 'cameraAlpha', 'cameraTargetX', 'cameraTargetY', 'cameraTargetZ', 'cameraFov', 'textFont', 'textDistance', 'textSize', 'textOutlineType', 'textOutlineColor', 'textOutlineWidth', 'textColor', 'textShading', 'textBackdrop', 'textAnimType', 'textAnimSpeed', 'textAnimIntensity', 'textDisplayPattern', 'textFaceCamera', 'auxFont', 'auxDistance', 'auxSize', 'auxOutlineType', 'auxOutlineColor', 'auxOutlineWidth', 'auxColor', 'auxShading', 'auxBackdrop', 'auxAnimType', 'auxAnimSpeed', 'auxAnimIntensity', 'auxDisplayPattern', 'binaural', 'metronome', 'carrierFreq', 'beatFreq', 'ampModulation', 'audioUrl', 'speech_synth', 'speech_voice', 'speech_speed'];
     
     for (const key of keys) {
       if (c[key] !== undefined && (index === 0 || c[key] !== (lastConfig as any)[key])) {

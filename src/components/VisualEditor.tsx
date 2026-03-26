@@ -188,24 +188,65 @@ interface SegmentEditorProps {
   removeSegment: (index: number) => void;
 }
 
-const SliderInput = ({ label, value, min, max, step, onChange }: { label: string, value: number, min: number, max: number, step: number, onChange: (val: number) => void }) => (
-  <div className="flex flex-col gap-1" onMouseDown={(e) => e.stopPropagation()}>
-    <div className="flex justify-between items-center">
-      <label className="text-[10px] text-zinc-500">{label}</label>
-      <span className="text-[10px] text-zinc-400 font-mono">{value}</span>
+const SliderInput = ({ label, value, min, max, step, onChange, logarithmic = false }: { label: string, value: number, min: number, max: number, step: number, onChange: (val: number) => void, logarithmic?: boolean }) => {
+  const getSliderValue = () => {
+    if (!logarithmic) return value;
+    if (min === 0 && value === 0) return 0;
+    
+    // For logarithmic, map [min, max] to [0, 1]
+    // Use 0.01 as the minimum non-zero value for log scale to avoid huge empty ranges
+    const effectiveMin = Math.max(min, 0.01);
+    const effectiveValue = Math.max(value, 0.01);
+    
+    const minLog = Math.log(effectiveMin);
+    const maxLog = Math.log(max);
+    const valLog = Math.log(effectiveValue);
+    return (valLog - minLog) / (maxLog - minLog);
+  };
+
+  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const rawVal = parseFloat(e.target.value);
+    if (!logarithmic) {
+      onChange(rawVal);
+    } else {
+      if (min === 0 && rawVal === 0) {
+        onChange(0);
+        return;
+      }
+      
+      const effectiveMin = Math.max(min, 0.01);
+      const minLog = Math.log(effectiveMin);
+      const maxLog = Math.log(max);
+      const valLog = minLog + rawVal * (maxLog - minLog);
+      let newVal = Math.exp(valLog);
+      
+      // Round to step
+      newVal = Math.round(newVal / step) * step;
+      // Ensure within bounds
+      newVal = Math.max(min, Math.min(max, newVal));
+      onChange(newVal);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-1" onMouseDown={(e) => e.stopPropagation()}>
+      <div className="flex justify-between items-center">
+        <label className="text-[10px] text-zinc-500">{label}</label>
+        <span className="text-[10px] text-zinc-400 font-mono">{typeof value === 'number' ? value.toFixed(step < 1 ? (step < 0.1 ? 2 : 1) : 0) : value}</span>
+      </div>
+      <input
+        type="range"
+        min={logarithmic ? 0 : min}
+        max={logarithmic ? 1 : max}
+        step={logarithmic ? 0.001 : step}
+        value={getSliderValue()}
+        onChange={handleSliderChange}
+        onMouseDown={(e) => e.stopPropagation()}
+        className="w-full accent-emerald-500"
+      />
     </div>
-    <input
-      type="range"
-      min={min}
-      max={max}
-      step={step}
-      value={value}
-      onChange={(e) => onChange(parseFloat(e.target.value))}
-      onMouseDown={(e) => e.stopPropagation()}
-      className="w-full accent-emerald-500"
-    />
-  </div>
-);
+  );
+};
 
 const PaletteManager = ({ palette, onChange }: { palette: string[], onChange: (newPalette: string[]) => void }) => {
   const addColor = () => onChange([...palette, '#ffffff']);
@@ -1458,20 +1499,140 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       onChange={(newPalette) => updateConfig(index, 'palette', newPalette)} 
                     />
                   </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Pattern Scale"
+                      min={0.1}
+                      max={5}
+                      step={0.1}
+                      value={seg.config.patternScale ?? 1.0}
+                      onChange={(val) => updateConfig(index, 'patternScale', val)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Complexity"
+                      min={1}
+                      max={10}
+                      step={1}
+                      value={seg.config.patternComplexity ?? 1}
+                      onChange={(val) => updateConfig(index, 'patternComplexity', val)}
+                    />
+                  </div>
+                  {/* Conditional Sliders based on pattern effect */}
+                  {(() => {
+                    const type = getValidPatternType(seg.config.patternType);
+                    const pattern = getValidPattern(type, seg.config.pattern);
+                    
+                    const showDensity = (type === 'fascinator' && ['mandala', 'particle', 'particles', 'cone spiral', 'spiral', 'wheel', 'kaleido', 'flat spiral', 'thicc spiral', 'dial', 'ring'].includes(pattern)) ||
+                                       (type === 'cloud' && ['particle', 'nebula'].includes(pattern)) ||
+                                       (type === 'topology') ||
+                                       (type === 'cluster' || type === 'repetition');
+                    
+                    const showThickness = (type === 'fascinator' && ['mandala', 'flame', 'dot', 'flat spiral', 'thicc spiral', 'dial', 'clock', 'ring', 'kaleido', 'particle', 'particles'].includes(pattern)) ||
+                                         (type === 'cloud' && ['nebula'].includes(pattern)) ||
+                                         (type === 'topology' && ['orb', 'tunnel'].includes(pattern));
+                    
+                    const showLength = (type === 'fascinator' && pattern === 'pendulum') ||
+                                      (type === 'topology' && pattern === 'tunnel');
+                    
+                    const showRadius = (type === 'topology' && pattern === 'tunnel');
+                    
+                    const showRoughness = (type === 'topology' && ['random voxel surface', 'random curved surface'].includes(pattern));
+                    
+                    const showSpacing = (type === 'topology' && pattern === 'orb');
+
+                    return (
+                      <>
+                        {showDensity && (
+                          <div className="col-span-2">
+                            <SliderInput
+                              label="Density"
+                              min={0.1}
+                              max={5}
+                              step={0.1}
+                              value={seg.config.patternDensity ?? 1.0}
+                              onChange={(val) => updateConfig(index, 'patternDensity', val)}
+                            />
+                          </div>
+                        )}
+                        {showThickness && (
+                          <div className="col-span-2">
+                            <SliderInput
+                              label="Thickness"
+                              min={0.1}
+                              max={5}
+                              step={0.1}
+                              value={seg.config.patternThickness ?? 1.0}
+                              onChange={(val) => updateConfig(index, 'patternThickness', val)}
+                            />
+                          </div>
+                        )}
+                        {showLength && (
+                          <div className="col-span-2">
+                            <SliderInput
+                              label="Length"
+                              min={0.1}
+                              max={5}
+                              step={0.1}
+                              value={seg.config.patternLength ?? 1.0}
+                              onChange={(val) => updateConfig(index, 'patternLength', val)}
+                            />
+                          </div>
+                        )}
+                        {showRadius && (
+                          <div className="col-span-2">
+                            <SliderInput
+                              label="Radius"
+                              min={0.1}
+                              max={5}
+                              step={0.1}
+                              value={seg.config.patternRadius ?? 1.0}
+                              onChange={(val) => updateConfig(index, 'patternRadius', val)}
+                            />
+                          </div>
+                        )}
+                        {showRoughness && (
+                          <div className="col-span-2">
+                            <SliderInput
+                              label="Roughness"
+                              min={0}
+                              max={5}
+                              step={0.1}
+                              value={seg.config.patternRoughness ?? 1.0}
+                              onChange={(val) => updateConfig(index, 'patternRoughness', val)}
+                            />
+                          </div>
+                        )}
+                        {showSpacing && (
+                          <div className="col-span-2">
+                            <SliderInput
+                              label="Spacing"
+                              min={0.1}
+                              max={5}
+                              step={0.1}
+                              value={seg.config.patternSpacing ?? 1.0}
+                              onChange={(val) => updateConfig(index, 'patternSpacing', val)}
+                            />
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
                   {(seg.config.pattern === 'flat spiral' || seg.config.pattern === 'thicc spiral') && (
                     <>
                       <div className="col-span-2">
                         <SliderInput label="Spiral Arms" min={1} max={20} step={1} value={seg.config.spiralArms ?? 5} onChange={(val) => updateConfig(index, 'spiralArms', val)} />
                       </div>
                       <div className="col-span-2">
-                        <SliderInput label="Spiral Thickness" min={0.01} max={5} step={0.01} value={seg.config.spiralThickness ?? 0.5} onChange={(val) => updateConfig(index, 'spiralThickness', val)} />
+                        <SliderInput label="Spiral Thickness" min={0.01} max={5} step={0.01} value={seg.config.spiralThickness ?? 0.5} onChange={(val) => updateConfig(index, 'spiralThickness', val)} logarithmic />
                       </div>
                       <div className="col-span-2">
-                        <SliderInput label="Spiral Curvature" min={0} max={5} step={0.1} value={seg.config.spiralCurvature ?? 1.0} onChange={(val) => updateConfig(index, 'spiralCurvature', val)} />
+                        <SliderInput label="Spiral Curvature" min={0} max={5} step={0.01} value={seg.config.spiralCurvature ?? 1.0} onChange={(val) => updateConfig(index, 'spiralCurvature', val)} logarithmic />
                       </div>
                       {(seg.config.pattern === 'flat spiral' || seg.config.pattern === 'thicc spiral') && (
                         <div className="col-span-2">
-                          <SliderInput label="Spiral Elasticity" min={0} max={1} step={0.01} value={seg.config.spiralElasticity ?? 0.5} onChange={(val) => updateConfig(index, 'spiralElasticity', val)} />
+                          <SliderInput label="Spiral Elasticity" min={0} max={1} step={0.01} value={seg.config.spiralElasticity ?? 0.5} onChange={(val) => updateConfig(index, 'spiralElasticity', val)} logarithmic />
                         </div>
                       )}
                     </>
@@ -1513,7 +1674,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   <div className="col-span-2">
                     <SliderInput
                       label="Pattern Speed"
-                      min={0}
+                      min={seg.config.pattern?.includes('spiral') ? -5 : 0}
                       max={5}
                       step={0.1}
                       value={seg.config.patternSpeed ?? 1.0}
@@ -1587,26 +1748,6 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       </div>
                     </>
                   )}
-                  <div className="col-span-2">
-                    <SliderInput
-                      label="Pattern Scale"
-                      min={0.1}
-                      max={5}
-                      step={0.1}
-                      value={seg.config.patternScale ?? 1.0}
-                      onChange={(val) => updateConfig(index, 'patternScale', val)}
-                    />
-                  </div>
-                  <div className="col-span-2">
-                    <SliderInput
-                      label="Complexity"
-                      min={1}
-                      max={10}
-                      step={1}
-                      value={seg.config.patternComplexity ?? 1}
-                      onChange={(val) => updateConfig(index, 'patternComplexity', val)}
-                    />
-                  </div>
                 </>
               ) : activeBubble.type === 'camera' ? (
                 <>
