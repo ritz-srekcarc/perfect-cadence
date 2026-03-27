@@ -787,12 +787,9 @@ export class SceneManager {
         case 'galaxy':
           if (config.pattern === 'orb') this.createOrb();
           else if (config.pattern === 'tunnel') this.createTunnel();
-          else if (config.pattern === 'wave' || config.pattern === 'waves') this.createWaves();
+          else if (config.pattern === 'shaft') this.createShaft();
+          else if (config.pattern === 'surface') this.createWaves();
           else if (config.pattern === 'nautilus spiral' || config.pattern === 'cone spiral') this.createConeSpiral();
-          else if (config.pattern === 'saddle') this.createWaves();
-          else if (config.pattern === 'plane') this.createWaves();
-          else if (config.pattern === 'random voxel surface') this.createWaves();
-          else if (config.pattern === 'random curved surface') this.createWaves();
           else if (config.pattern === 'galaxy') this.createConeSpiral();
           else this.createWaves();
           break;
@@ -845,7 +842,7 @@ export class SceneManager {
 
     // Reset camera position based on mode
     if (patternChanged || cameraChanged) {
-      const isTunnel = config.pattern === 'tunnel';
+      const isTunnel = config.pattern === 'tunnel' || config.pattern === 'shaft';
       const targetX = config.cameraTargetX ?? 0;
       const targetY = config.cameraTargetY ?? 0;
       const targetZ = config.cameraTargetZ ?? (isTunnel ? 1 : 0);
@@ -896,7 +893,7 @@ export class SceneManager {
   }
 
   private getPaletteColor(index: number, defaultColor?: Color3): Color3 {
-    const palette = this.currentConfig?.palette;
+    const palette = this.currentConfig?.palette || ['#ffffff', '#00ff88', '#0066ff'];
     if (palette && palette.length > 0) {
       const hex = palette[index % palette.length];
       return this.parseColor(hex, defaultColor);
@@ -976,19 +973,89 @@ export class SceneManager {
 
   private createTunnel() {
     const scale = this.currentConfig?.patternScale ?? 1.0;
-    const thickness = this.currentConfig?.patternThickness ?? 1.0;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    const patternThickness = this.currentConfig?.patternThickness ?? 1.0;
+    const arms = Math.floor((this.currentConfig?.spiralArms ?? 5) * density);
+    const thickness = (this.currentConfig?.spiralThickness ?? 0.5) * patternThickness;
+    const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
+    const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
     const radius = this.currentConfig?.patternRadius ?? 7.5;
     const length = this.currentConfig?.patternLength ?? 100;
-    const material = new StandardMaterial("tunnelMat", this.scene);
+    
+    for (let a = 0; a < arms; a++) {
+      const color = this.getPaletteColor(a % 10, new Color3(1, 1, 1));
+      const material = new StandardMaterial(`tunnelMat_${a}`, this.scene);
+      material.emissiveColor = color;
+      material.wireframe = true;
+      material.alpha = 0.8;
+      material.backFaceCulling = false;
+
+      const armOffset = (Math.PI * 2 / arms) * a;
+      const path = [];
+      const pathLength = 100;
+      
+      for (let j = 0; j < pathLength; j++) {
+        const t = j / (pathLength - 1);
+        
+        const def = Math.sin(t * 10.0 - this.time * (this.currentConfig?.patternSpeed ?? 1.0) * 2.0) * elasticity;
+        const angle = armOffset + (t * Math.PI * 4 + def) * curvature;
+        const r = radius * scale;
+        
+        const x = Math.cos(angle) * r;
+        const y = Math.sin(angle) * r;
+        const z = (t - 0.5) * length * scale;
+        
+        path.push(new Vector3(x, y, z));
+      }
+
+      const tubeRadiusFunc = (i: number, distance: number) => {
+        const maxTubeRadius = (Math.PI * radius * scale) / arms;
+        const baseTubeRadius = thickness * scale * 0.5;
+        return Math.max(0.001, Math.min(baseTubeRadius, maxTubeRadius));
+      };
+
+      const tube = MeshBuilder.CreateTube(`tunnel_${a}`, { 
+        path, 
+        radiusFunction: tubeRadiusFunc,
+        tessellation: 16,
+        updatable: true
+      }, this.scene);
+      
+      tube.parent = this.patternRoot;
+      tube.material = material;
+      
+      // Store metadata for animation
+      tube.metadata = { armOffset, pathLength };
+      
+      this.currentMeshes.push(tube);
+    }
+  }
+
+  private createShaft() {
+    const complexity = this.currentConfig?.patternComplexity ?? 1;
+    const density = this.currentConfig?.patternDensity ?? 1.0;
+    
+    const material = new StandardMaterial("shaftMat", this.scene);
     material.emissiveColor = this.getPaletteColor(0, new Color3(1.0, 0.3, 0.8));
     material.wireframe = true;
     material.alpha = 0.3;
     material.backFaceCulling = false;
 
-    const cylinder = MeshBuilder.CreateCylinder("tunnel", { height: length * scale, diameter: radius * 2 * scale * thickness, tessellation: 32, subdivisions: 50 }, this.scene);
+    const tessellation = Math.floor(32 * complexity * density);
+    const subdivisions = Math.floor(50 * complexity * density);
+
+    // Create a unit cylinder
+    const cylinder = MeshBuilder.CreateCylinder("shaft", { height: 1, diameter: 2, tessellation, subdivisions, updatable: true }, this.scene);
     cylinder.parent = this.patternRoot;
     cylinder.rotation.x = Math.PI / 2;
     cylinder.material = material;
+    
+    // Store original positions for animation
+    const positions = cylinder.getVerticesData(VertexBuffer.PositionKind);
+    if (positions) {
+      cylinder.metadata = { originalPositions: new Float32Array(positions) };
+    }
+    
     this.currentMeshes.push(cylinder);
   }
 
@@ -1074,7 +1141,7 @@ export class SceneManager {
     
     const ps = new ParticleSystem("particles", Math.floor(2000 * complexity * density), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/PatrickRyanMS/BabylonJStextures/master/ParticleSystems/Sun/T_Sunflare.png", this.scene);
+    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
     ps.minEmitBox = new Vector3(-5 * scale, -5 * scale, -5 * scale);
     ps.maxEmitBox = new Vector3(5 * scale, 5 * scale, 5 * scale);
@@ -1113,7 +1180,7 @@ export class SceneManager {
     // Create the flame particle system
     const ps = new ParticleSystem("flame", Math.floor(1000 * complexity * density), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/PatrickRyanMS/BabylonJStextures/master/ParticleSystems/Sun/T_Sunflare.png", this.scene);
+    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
     
     const emitterMesh = new Mesh("flameEmitter", this.scene);
     emitterMesh.parent = root;
@@ -2045,7 +2112,7 @@ export class SceneManager {
           // For topology patterns, tilt it so the 3D surface is visible
           // For flat patterns (mandala, clock, etc.), don't flip as they are already in XY plane
           let flipAngle = Math.PI / 2;
-          if (type === 'topology' && pattern !== 'orb' && pattern !== 'tunnel') {
+          if (type === 'topology' && pattern !== 'orb' && pattern !== 'tunnel' && pattern !== 'shaft') {
             flipAngle = Math.PI / 3;
           } else if (['mandala', 'flat spiral', 'clock', 'dial', 'wheel', 'pendulum', 'kaleido', 'flame', 'dot', 'grid'].includes(pattern)) {
             flipAngle = 0;
@@ -2247,8 +2314,10 @@ export class SceneManager {
             const scale = this.currentConfig?.patternScale ?? 1.0;
             const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
             const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
-            const thickness = this.currentConfig?.spiralThickness ?? 0.5;
-            const arms = this.currentConfig?.spiralArms ?? 5;
+            const patternThickness = this.currentConfig?.patternThickness ?? 1.0;
+            const thickness = (this.currentConfig?.spiralThickness ?? 0.5) * patternThickness;
+            const density = this.currentConfig?.patternDensity ?? 1.0;
+            const arms = Math.floor((this.currentConfig?.spiralArms ?? 5) * density);
             const armOffset = m.metadata.armOffset;
             const pathLength = m.metadata.pathLength;
             
@@ -2316,11 +2385,124 @@ export class SceneManager {
       const segmentLength = (length * scale) / 50; // 2 * scale
       const offset = (this.time * animSpeed * 5) % segmentLength;
       
+      this.currentMeshes.forEach((m, i) => {
+        if (m.metadata && m.metadata.pathLength) {
+          const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
+          const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
+          const patternThickness = this.currentConfig?.patternThickness ?? 1.0;
+          const thickness = (this.currentConfig?.spiralThickness ?? 0.5) * patternThickness;
+          const density = this.currentConfig?.patternDensity ?? 1.0;
+          const arms = Math.floor((this.currentConfig?.spiralArms ?? 5) * density);
+          const radius = this.currentConfig?.patternRadius ?? 7.5;
+          const armOffset = m.metadata.armOffset;
+          const pathLength = m.metadata.pathLength;
+          
+          const newPath = [];
+          for (let j = 0; j < pathLength; j++) {
+            const t = j / (pathLength - 1);
+            const z = (t - 0.5) * length * scale;
+            const worldZ = z + m.position.z;
+            const def = Math.sin(worldZ * (10.0 / (length * scale)) - this.time * animSpeed * 2.0) * elasticity;
+            const angle = armOffset + (t * Math.PI * 4 + def) * curvature;
+            const r = radius * scale;
+            
+            const x = Math.cos(angle) * r;
+            const y = Math.sin(angle) * r;
+            
+            newPath.push(new Vector3(x, y, z));
+          }
+          
+          const tubeRadiusFunc = (i: number, distance: number) => {
+            const maxTubeRadius = (Math.PI * radius * scale) / arms;
+            const baseTubeRadius = thickness * scale * 0.5;
+            return Math.max(0.001, Math.min(baseTubeRadius, maxTubeRadius));
+          };
+          
+          MeshBuilder.CreateTube(m.name, { 
+            path: newPath, 
+            radiusFunction: tubeRadiusFunc,
+            instance: m as any 
+          });
+        }
+        
+        if (this.currentConfig.camera === 'fly') {
+          const baseZ = Math.floor(this.camera.target.z / segmentLength) * segmentLength;
+          m.position.z = baseZ - offset;
+        } else {
+          m.position.z = -offset;
+        }
+      });
+    } else if (pattern === 'shaft' && this.currentMeshes.length > 0) {
+      const scale = this.currentConfig.patternScale ?? 1.0;
+      const length = this.currentConfig.patternLength ?? 100;
+      const radius = this.currentConfig.patternRadius ?? 7.5;
+      const thickness = this.currentConfig.patternThickness ?? 1.0;
+      const segmentLength = (length * scale) / 50; // 2 * scale
+      const offset = (this.time * animSpeed * 5) % segmentLength;
+      
+      const cylinder = this.currentMeshes[0];
+      
       if (this.currentConfig.camera === 'fly') {
         const baseZ = Math.floor(this.camera.target.z / segmentLength) * segmentLength;
-        this.currentMeshes[0].position.z = baseZ - offset;
+        cylinder.position.z = baseZ - offset;
       } else {
-        this.currentMeshes[0].position.z = -offset;
+        cylinder.position.z = -offset;
+      }
+      
+      const positions = cylinder.getVerticesData(VertexBuffer.PositionKind);
+      const originalPositions = cylinder.metadata?.originalPositions;
+      
+      const amp = this.currentConfig?.topologyAmplitude ?? 1.0;
+      const freq = this.currentConfig?.topologyFrequency ?? 1.0;
+      const roughness = this.currentConfig?.patternRoughness ?? 1.0;
+      const wavePeriod = this.currentConfig?.surfaceWavePeriod ?? 1.0;
+      const randomizedMotion = this.currentConfig?.surfaceRandomizedMotion ?? false;
+      const centerWave = this.currentConfig?.surfaceCenterWave ?? false;
+      const voxelize = this.currentConfig?.surfaceVoxelize ?? false;
+      
+      if (positions && originalPositions) {
+        for (let i = 0; i < positions.length; i += 3) {
+          const origX = originalPositions[i];
+          const origY = originalPositions[i + 1];
+          const origZ = originalPositions[i + 2];
+          
+          // Unit cylinder has radius 1, height from -0.5 to 0.5
+          const unitRadius = Math.sqrt(origX * origX + origZ * origZ);
+          const angle = Math.atan2(origZ, origX);
+          
+          // Scale height to actual length and center it
+          const height = origY * length * scale;
+          const worldZ = height + cylinder.position.z;
+          
+          let val = 0;
+          
+          if (centerWave) {
+            val = Math.sin(worldZ * freq * 0.5 - this.time * 2 * animSpeed * wavePeriod);
+          } else {
+            val = Math.sin(angle * freq * 2.0 + this.time * 2 * animSpeed * wavePeriod) * Math.cos(worldZ * freq * 0.5 + this.time * 2 * animSpeed * wavePeriod);
+          }
+          
+          if (randomizedMotion) {
+             const val2 = Math.sin(angle * freq * 4.0 * roughness - this.time * 1.5 * animSpeed) * Math.cos(worldZ * freq * 0.8 * roughness + this.time * 0.5 * animSpeed);
+             val = val + val2 * 0.5 * roughness;
+          }
+          
+          val *= amp * 0.5; // Scale amplitude down a bit for shaft
+          
+          if (voxelize) {
+            const step = 2 / Math.max(0.1, roughness);
+            val = Math.floor(val * step) / step;
+          }
+          
+          // Apply displacement to base radius
+          const baseRadius = radius * scale * thickness;
+          const newRadius = Math.max(0.01, baseRadius + val);
+          
+          positions[i] = Math.cos(angle) * newRadius;
+          positions[i + 1] = height; // Apply height scaling
+          positions[i + 2] = Math.sin(angle) * newRadius;
+        }
+        cylinder.updateVerticesData(VertexBuffer.PositionKind, positions);
       }
     } else if (pattern === 'ring' || pattern === 'grid') {
       this.currentMeshes.forEach((m, i) => {
@@ -2343,37 +2525,44 @@ export class SceneManager {
         m.rotation.x += 0.02 * animSpeed;
         m.rotation.y += 0.01 * animSpeed;
       });
-    } else if ((pattern === 'wave' || pattern === 'waves' || pattern === 'saddle' || pattern === 'plane' || pattern === 'random voxel surface' || pattern === 'random curved surface') && this.currentMeshes.length > 0) {
+    } else if (pattern === 'surface' && this.currentMeshes.length > 0) {
       const ground = this.currentMeshes[0];
       const positions = ground.getVerticesData(VertexBuffer.PositionKind);
       const amp = this.currentConfig?.topologyAmplitude ?? 1.0;
       const freq = this.currentConfig?.topologyFrequency ?? 1.0;
       const roughness = this.currentConfig?.patternRoughness ?? 1.0;
+      const wavePeriod = this.currentConfig?.surfaceWavePeriod ?? 1.0;
+      const randomizedMotion = this.currentConfig?.surfaceRandomizedMotion ?? false;
+      const centerWave = this.currentConfig?.surfaceCenterWave ?? false;
+      const voxelize = this.currentConfig?.surfaceVoxelize ?? false;
       
       if (positions) {
         for (let i = 0; i < positions.length; i += 3) {
           const x = positions[i];
           const z = positions[i + 2];
           
-          if (pattern === 'saddle') {
-            const xx = x * freq * 0.2;
-            const zz = z * freq * 0.2;
-            positions[i + 1] = (xx * xx - zz * zz) * amp * Math.cos(this.time * animSpeed);
-          } else if (pattern === 'wave' || pattern === 'waves') {
-            positions[i + 1] = amp * Math.sin(x * freq * 0.5 + this.time * 2 * animSpeed) * Math.cos(z * freq * 0.5 + this.time * 2 * animSpeed);
-          } else if (pattern === 'plane') {
-            positions[i + 1] = 0;
-          } else if (pattern === 'random voxel surface') {
-            const val = amp * Math.sin(x * freq * 0.5 + this.time * animSpeed) * Math.cos(z * freq * 0.5 + this.time * animSpeed);
-            const step = 2 / roughness;
-            positions[i + 1] = Math.floor(val * step) / step;
-          } else if (pattern === 'random curved surface') {
-            const val1 = Math.sin(x * freq * 0.5 + this.time * animSpeed) * Math.cos(z * freq * 0.5 + this.time * animSpeed);
-            const val2 = Math.sin(x * freq * 1.2 * roughness - this.time * 1.5) * Math.cos(z * freq * 0.8 * roughness + this.time * 0.5);
-            positions[i + 1] = amp * (val1 + val2 * 0.5 * roughness);
+          let val = 0;
+          
+          if (centerWave) {
+            const dist = Math.sqrt(x * x + z * z);
+            val = Math.sin(dist * freq * 0.5 - this.time * 2 * animSpeed * wavePeriod);
           } else {
-            positions[i + 1] = Math.sin(x * 0.5 + this.time * 2 * animSpeed) * Math.cos(z * 0.5 + this.time * 2 * animSpeed);
+            val = Math.sin(x * freq * 0.5 + this.time * 2 * animSpeed * wavePeriod) * Math.cos(z * freq * 0.5 + this.time * 2 * animSpeed * wavePeriod);
           }
+          
+          if (randomizedMotion) {
+             const val2 = Math.sin(x * freq * 1.2 * roughness - this.time * 1.5 * animSpeed) * Math.cos(z * freq * 0.8 * roughness + this.time * 0.5 * animSpeed);
+             val = val + val2 * 0.5 * roughness;
+          }
+          
+          val *= amp;
+          
+          if (voxelize) {
+            const step = 2 / Math.max(0.1, roughness);
+            val = Math.floor(val * step) / step;
+          }
+          
+          positions[i + 1] = val;
         }
         ground.updateVerticesData(VertexBuffer.PositionKind, positions);
       }

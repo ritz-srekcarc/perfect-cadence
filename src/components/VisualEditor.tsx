@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { TimelineSegment, SegmentConfig, parseSegmentContent, MediaItem, PREBUILT_WORDLISTS } from '../timelineParser';
 import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2, Info, Bold, Italic, Heading1, Heading2, List, ListOrdered, Ear, Timer, Image, Tv, Volume2, Paintbrush, Film, X, Speech, Orbit, Activity, Camera, LayoutGrid, Grid, Layout, Link as LinkIcon, FileUp } from 'lucide-react';
 import { transcribeAudio } from '../services/audioAnalysisService';
@@ -813,7 +813,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
       repetition: ['grid', 'march', 'helix', 'spiral', 'vortex', 'sphere', 'cube', 'polygon'],
       cloud: ['particle', 'nebula', 'smoke', 'fluid', 'swarm', 'constellation', 'bubbles'],
       cluster: ['disordered', 'float', 'orbit', 'pulse', 'vortex'],
-      topology: ['orb', 'tunnel', 'wave', 'nautilus spiral', 'cone spiral', 'saddle', 'plane', 'random voxel surface', 'random curved surface', 'galaxy']
+      topology: ['orb', 'tunnel', 'shaft', 'nautilus spiral', 'cone spiral', 'surface', 'galaxy']
     };
     return valid[getValidPatternType(type)] || valid.fascinator;
   };
@@ -832,6 +832,26 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcribeProgress, setTranscribeProgress] = useState('');
   const bubbleRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    if (activeBubble && bubbleRef.current) {
+      const rect = bubbleRef.current.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      
+      // Reset any previous transforms
+      bubbleRef.current.style.transform = '';
+      
+      if (rect.bottom > viewportHeight) {
+        const overflow = rect.bottom - viewportHeight + 20; // 20px padding
+        // Ensure we don't push it too far up (off the top of the screen)
+        const maxUpwardShift = rect.top - 20;
+        const shift = Math.min(overflow, maxUpwardShift);
+        if (shift > 0) {
+          bubbleRef.current.style.transform = `translateY(-${shift}px)`;
+        }
+      }
+    }
+  }, [activeBubble]);
 
   useEffect(() => {
     if (!activeBubble) return;
@@ -1021,7 +1041,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
           <div 
             ref={bubbleRef}
             data-bubble-container="true"
-            className="absolute top-12 right-0 z-50 w-96 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200"
+            className="absolute top-12 right-0 z-50 w-96 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200 max-h-[80vh] overflow-y-auto"
           >
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
@@ -1090,16 +1110,27 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   </div>
                   <div className="flex flex-col gap-1 col-span-2">
                     <label className="text-[10px] text-zinc-500 uppercase font-bold">Outline</label>
-                    <select 
-                      value={(activeBubble.isAux ? seg.config.auxOutlineType : seg.config.textOutlineType) || 'none'} 
-                      onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxOutlineType' : 'textOutlineType', e.target.value)} 
-                      onMouseDown={(e) => e.stopPropagation()}
-                      className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 w-full"
-                    >
-                      <option value="none">None</option>
-                      <option value="rainbow">Rainbow</option>
-                      <option value="solid">Solid</option>
-                    </select>
+                    <div className="flex gap-2">
+                      <select 
+                        value={(activeBubble.isAux ? seg.config.auxOutlineType : seg.config.textOutlineType) || 'none'} 
+                        onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxOutlineType' : 'textOutlineType', e.target.value)} 
+                        onMouseDown={(e) => e.stopPropagation()}
+                        className="bg-zinc-950 border border-zinc-800 rounded-lg px-2 py-1.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 flex-1"
+                      >
+                        <option value="none">None</option>
+                        <option value="rainbow">Rainbow</option>
+                        <option value="solid">Solid</option>
+                      </select>
+                      {((activeBubble.isAux ? seg.config.auxOutlineType : seg.config.textOutlineType) === 'solid') && (
+                        <input 
+                          type="color" 
+                          value={(activeBubble.isAux ? seg.config.auxOutlineColor : seg.config.textOutlineColor) || '#000000'} 
+                          onChange={(e) => updateConfig(index, activeBubble.isAux ? 'auxOutlineColor' : 'textOutlineColor', e.target.value)} 
+                          onMouseDown={(e) => e.stopPropagation()}
+                          className="bg-zinc-950 border border-zinc-800 rounded-lg px-1 py-0.5 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-emerald-500 h-8 w-8 shrink-0" 
+                        />
+                      )}
+                    </div>
                   </div>
                   <div className="col-span-2">
                     <SliderInput
@@ -1401,13 +1432,10 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                         <>
                           <option value="orb">Orb</option>
                           <option value="tunnel">Tunnel</option>
-                          <option value="wave">Wave</option>
                           <option value="nautilus spiral">Nautilus Spiral</option>
                           <option value="cone spiral">Cone Spiral</option>
-                          <option value="saddle">Saddle</option>
-                          <option value="plane">Plane</option>
-                          <option value="random voxel surface">Random Voxel Surface</option>
-                          <option value="random curved surface">Random Curved Surface</option>
+                          <option value="shaft">Shaft</option>
+                          <option value="surface">Surface</option>
                           <option value="galaxy">Galaxy</option>
                         </>
                       )}
@@ -1472,7 +1500,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                     </>
                   )}
 
-                  {getValidPatternType(seg.config.patternType) === 'topology' && (seg.config.pattern === 'wave' || seg.config.pattern === 'saddle') && (
+                  {(getValidPatternType(seg.config.patternType) === 'topology' && (seg.config.pattern === 'surface' || seg.config.pattern === 'shaft')) && (
                     <>
                       <div className="col-span-2">
                         <SliderInput 
@@ -1490,6 +1518,44 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                           onChange={(val) => updateConfig(index, 'topologyFrequency', val)} 
                         />
                       </div>
+                      <div className="col-span-2">
+                        <SliderInput 
+                          label="Wave Period" 
+                          value={seg.config.surfaceWavePeriod ?? 1.0} 
+                          min={0.1} max={5} step={0.1} 
+                          onChange={(val) => updateConfig(index, 'surfaceWavePeriod', val)} 
+                        />
+                      </div>
+                      <div className="col-span-2 flex items-center gap-2 mt-2">
+                        <input 
+                          type="checkbox" 
+                          id={`surfaceRandomizedMotion-${index}`}
+                          checked={seg.config.surfaceRandomizedMotion ?? false} 
+                          onChange={(e) => updateConfig(index, 'surfaceRandomizedMotion', e.target.checked)} 
+                          className="accent-emerald-500"
+                        />
+                        <label htmlFor={`surfaceRandomizedMotion-${index}`} className="text-[10px] text-zinc-400 uppercase font-bold cursor-pointer">Randomized Motion</label>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-2 mt-2">
+                        <input 
+                          type="checkbox" 
+                          id={`surfaceCenterWave-${index}`}
+                          checked={seg.config.surfaceCenterWave ?? false} 
+                          onChange={(e) => updateConfig(index, 'surfaceCenterWave', e.target.checked)} 
+                          className="accent-emerald-500"
+                        />
+                        <label htmlFor={`surfaceCenterWave-${index}`} className="text-[10px] text-zinc-400 uppercase font-bold cursor-pointer">Center Wave</label>
+                      </div>
+                      <div className="col-span-2 flex items-center gap-2 mt-2">
+                        <input 
+                          type="checkbox" 
+                          id={`surfaceVoxelize-${index}`}
+                          checked={seg.config.surfaceVoxelize ?? false} 
+                          onChange={(e) => updateConfig(index, 'surfaceVoxelize', e.target.checked)} 
+                          className="accent-emerald-500"
+                        />
+                        <label htmlFor={`surfaceVoxelize-${index}`} className="text-[10px] text-zinc-400 uppercase font-bold cursor-pointer">Voxelize</label>
+                      </div>
                     </>
                   )}
 
@@ -1503,44 +1569,62 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                     <SliderInput
                       label="Pattern Scale"
                       min={0.1}
-                      max={5}
+                      max={(getValidPatternType(seg.config.patternType) === 'cloud' || ['tunnel', 'shaft'].includes(seg.config.pattern)) ? 500 : 5}
                       step={0.1}
                       value={seg.config.patternScale ?? 1.0}
                       onChange={(val) => updateConfig(index, 'patternScale', val)}
+                      logarithmic={getValidPatternType(seg.config.patternType) === 'cloud' || ['tunnel', 'shaft'].includes(seg.config.pattern)}
                     />
                   </div>
                   <div className="col-span-2">
                     <SliderInput
                       label="Complexity"
                       min={1}
-                      max={10}
+                      max={(getValidPatternType(seg.config.patternType) === 'cloud' || ['tunnel', 'shaft'].includes(seg.config.pattern)) ? 500 : 10}
                       step={1}
                       value={seg.config.patternComplexity ?? 1}
                       onChange={(val) => updateConfig(index, 'patternComplexity', val)}
+                      logarithmic={getValidPatternType(seg.config.patternType) === 'cloud' || ['tunnel', 'shaft'].includes(seg.config.pattern)}
                     />
                   </div>
                   {/* Conditional Sliders based on pattern effect */}
                   {(() => {
                     const type = getValidPatternType(seg.config.patternType);
                     const pattern = getValidPattern(type, seg.config.pattern);
+                    const basePattern = type === 'cluster' ? (seg.config.clusterBasePattern || 'dot') :
+                                        type === 'repetition' ? (seg.config.repetitionBasePattern || 'dot') : null;
                     
-                    const showDensity = (type === 'fascinator' && ['mandala', 'particle', 'particles', 'cone spiral', 'spiral', 'wheel', 'kaleido', 'flat spiral', 'thicc spiral', 'dial', 'ring'].includes(pattern)) ||
-                                       (type === 'cloud' && ['particle', 'nebula'].includes(pattern)) ||
-                                       (type === 'topology') ||
-                                       (type === 'cluster' || type === 'repetition');
-                    
-                    const showThickness = (type === 'fascinator' && ['mandala', 'flame', 'dot', 'flat spiral', 'thicc spiral', 'dial', 'clock', 'ring', 'kaleido', 'particle', 'particles'].includes(pattern)) ||
-                                         (type === 'cloud' && ['nebula'].includes(pattern)) ||
-                                         (type === 'topology' && ['orb', 'tunnel'].includes(pattern));
-                    
-                    const showLength = (type === 'fascinator' && pattern === 'pendulum') ||
-                                      (type === 'topology' && pattern === 'tunnel');
-                    
-                    const showRadius = (type === 'topology' && pattern === 'tunnel');
-                    
-                    const showRoughness = (type === 'topology' && ['random voxel surface', 'random curved surface'].includes(pattern));
-                    
-                    const showSpacing = (type === 'topology' && pattern === 'orb');
+                    const checkDensity = (t: string, p: string) => 
+                      (t === 'fascinator' && ['mandala', 'particle', 'particles', 'cone spiral', 'spiral', 'wheel', 'kaleido', 'flat spiral', 'thicc spiral', 'dial', 'ring'].includes(p)) ||
+                      (t === 'cloud' && ['particle', 'nebula'].includes(p)) ||
+                      (t === 'topology');
+                      
+                    const checkThickness = (t: string, p: string) =>
+                      (t === 'fascinator' && ['mandala', 'flame', 'dot', 'flat spiral', 'thicc spiral', 'dial', 'clock', 'ring', 'kaleido', 'particle', 'particles'].includes(p)) ||
+                      (t === 'cloud' && ['nebula'].includes(p)) ||
+                      (t === 'topology' && ['orb', 'tunnel', 'shaft'].includes(p));
+                      
+                    const checkLength = (t: string, p: string) =>
+                      (t === 'fascinator' && p === 'pendulum') ||
+                      (t === 'topology' && ['tunnel', 'shaft'].includes(p));
+                      
+                    const checkRadius = (t: string, p: string) =>
+                      (t === 'topology' && ['tunnel', 'shaft'].includes(p));
+                      
+                    const checkRoughness = (t: string, p: string) =>
+                      (t === 'topology' && ['surface', 'shaft'].includes(p));
+                      
+                    const checkSpacing = (t: string, p: string) =>
+                      (t === 'topology' && p === 'orb');
+                      
+                    const showDensity = checkDensity(type, pattern) || (basePattern && checkDensity('fascinator', basePattern));
+                    const showThickness = checkThickness(type, pattern) || (basePattern && checkThickness('fascinator', basePattern));
+                    const showLength = checkLength(type, pattern) || (basePattern && checkLength('fascinator', basePattern));
+                    const showRadius = checkRadius(type, pattern) || (basePattern && checkRadius('fascinator', basePattern));
+                    const showRoughness = checkRoughness(type, pattern) || (basePattern && checkRoughness('fascinator', basePattern));
+                    const showSpacing = checkSpacing(type, pattern) || (basePattern && checkSpacing('fascinator', basePattern));
+
+                    const isCloudOrTunnel = type === 'cloud' || ['tunnel', 'shaft'].includes(pattern);
 
                     return (
                       <>
@@ -1549,10 +1633,11 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                             <SliderInput
                               label="Density"
                               min={0.1}
-                              max={5}
+                              max={isCloudOrTunnel ? 500 : 5}
                               step={0.1}
                               value={seg.config.patternDensity ?? 1.0}
                               onChange={(val) => updateConfig(index, 'patternDensity', val)}
+                              logarithmic={isCloudOrTunnel}
                             />
                           </div>
                         )}
@@ -1561,10 +1646,11 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                             <SliderInput
                               label="Thickness"
                               min={0.1}
-                              max={5}
+                              max={isCloudOrTunnel ? 500 : 5}
                               step={0.1}
                               value={seg.config.patternThickness ?? 1.0}
                               onChange={(val) => updateConfig(index, 'patternThickness', val)}
+                              logarithmic={isCloudOrTunnel}
                             />
                           </div>
                         )}
@@ -1573,10 +1659,11 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                             <SliderInput
                               label="Length"
                               min={0.1}
-                              max={5}
+                              max={isCloudOrTunnel ? 1000 : 5}
                               step={0.1}
                               value={seg.config.patternLength ?? 1.0}
                               onChange={(val) => updateConfig(index, 'patternLength', val)}
+                              logarithmic={isCloudOrTunnel}
                             />
                           </div>
                         )}
@@ -1585,10 +1672,11 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                             <SliderInput
                               label="Radius"
                               min={0.1}
-                              max={5}
+                              max={isCloudOrTunnel ? 500 : 5}
                               step={0.1}
                               value={seg.config.patternRadius ?? 1.0}
                               onChange={(val) => updateConfig(index, 'patternRadius', val)}
+                              logarithmic={isCloudOrTunnel}
                             />
                           </div>
                         )}
@@ -1597,10 +1685,11 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                             <SliderInput
                               label="Roughness"
                               min={0}
-                              max={5}
+                              max={isCloudOrTunnel ? 500 : 5}
                               step={0.1}
                               value={seg.config.patternRoughness ?? 1.0}
                               onChange={(val) => updateConfig(index, 'patternRoughness', val)}
+                              logarithmic={isCloudOrTunnel}
                             />
                           </div>
                         )}
@@ -1609,34 +1698,42 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                             <SliderInput
                               label="Spacing"
                               min={0.1}
-                              max={5}
+                              max={isCloudOrTunnel ? 500 : 5}
                               step={0.1}
                               value={seg.config.patternSpacing ?? 1.0}
                               onChange={(val) => updateConfig(index, 'patternSpacing', val)}
+                              logarithmic={isCloudOrTunnel}
                             />
                           </div>
                         )}
                       </>
                     );
                   })()}
-                  {(seg.config.pattern === 'flat spiral' || seg.config.pattern === 'thicc spiral') && (
-                    <>
-                      <div className="col-span-2">
-                        <SliderInput label="Spiral Arms" min={1} max={20} step={1} value={seg.config.spiralArms ?? 5} onChange={(val) => updateConfig(index, 'spiralArms', val)} />
-                      </div>
-                      <div className="col-span-2">
-                        <SliderInput label="Spiral Thickness" min={0.01} max={5} step={0.01} value={seg.config.spiralThickness ?? 0.5} onChange={(val) => updateConfig(index, 'spiralThickness', val)} logarithmic />
-                      </div>
-                      <div className="col-span-2">
-                        <SliderInput label="Spiral Curvature" min={0} max={5} step={0.01} value={seg.config.spiralCurvature ?? 1.0} onChange={(val) => updateConfig(index, 'spiralCurvature', val)} logarithmic />
-                      </div>
-                      {(seg.config.pattern === 'flat spiral' || seg.config.pattern === 'thicc spiral') && (
+                  {(() => {
+                    const type = getValidPatternType(seg.config.patternType);
+                    const pattern = getValidPattern(type, seg.config.pattern);
+                    const basePattern = type === 'cluster' ? (seg.config.clusterBasePattern || 'dot') :
+                                        type === 'repetition' ? (seg.config.repetitionBasePattern || 'dot') : null;
+                    const isSpiral = ['flat spiral', 'thicc spiral'].includes(pattern) || (basePattern && ['flat spiral', 'thicc spiral'].includes(basePattern)) || (type === 'topology' && pattern === 'tunnel');
+                    
+                    if (!isSpiral) return null;
+                    return (
+                      <>
+                        <div className="col-span-2">
+                          <SliderInput label="Spiral Arms" min={1} max={20} step={1} value={seg.config.spiralArms ?? 5} onChange={(val) => updateConfig(index, 'spiralArms', val)} />
+                        </div>
+                        <div className="col-span-2">
+                          <SliderInput label="Spiral Thickness" min={0.01} max={5} step={0.01} value={seg.config.spiralThickness ?? 0.5} onChange={(val) => updateConfig(index, 'spiralThickness', val)} logarithmic />
+                        </div>
+                        <div className="col-span-2">
+                          <SliderInput label="Spiral Curvature" min={0} max={5} step={0.01} value={seg.config.spiralCurvature ?? 1.0} onChange={(val) => updateConfig(index, 'spiralCurvature', val)} logarithmic />
+                        </div>
                         <div className="col-span-2">
                           <SliderInput label="Spiral Elasticity" min={0} max={1} step={0.01} value={seg.config.spiralElasticity ?? 0.5} onChange={(val) => updateConfig(index, 'spiralElasticity', val)} logarithmic />
                         </div>
-                      )}
-                    </>
-                  )}
+                      </>
+                    );
+                  })()}
                 </>
               ) : activeBubble.type === 'anim_config' ? (
                 <>
@@ -1675,13 +1772,14 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                     <SliderInput
                       label="Pattern Speed"
                       min={seg.config.pattern?.includes('spiral') ? -5 : 0}
-                      max={5}
+                      max={(getValidPatternType(seg.config.patternType) === 'cloud' || ['tunnel', 'shaft'].includes(seg.config.pattern)) ? 500 : 5}
                       step={0.1}
                       value={seg.config.patternSpeed ?? 1.0}
                       onChange={(val) => updateConfig(index, 'patternSpeed', val)}
+                      logarithmic={getValidPatternType(seg.config.patternType) === 'cloud' || ['tunnel', 'shaft'].includes(seg.config.pattern)}
                     />
                   </div>
-                  {(getValidPatternType(seg.config.patternType) === 'repetition' || getValidPatternType(seg.config.patternType) === 'cluster') ? (
+                  {(getValidPatternType(seg.config.patternType) === 'repetition' || getValidPatternType(seg.config.patternType) === 'cluster') && (
                     <>
                       <div className="col-span-2">
                         <SliderInput
@@ -1714,40 +1812,37 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                         />
                       </div>
                     </>
-                  ) : (
-                    <>
-                      <div className="col-span-2">
-                        <SliderInput
-                          label="Pattern Spin"
-                          min={-5}
-                          max={5}
-                          step={0.1}
-                          value={seg.config.patternSpin ?? 0}
-                          onChange={(val) => updateConfig(index, 'patternSpin', val)}
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <SliderInput
-                          label="Pattern Rotation"
-                          min={-5}
-                          max={5}
-                          step={0.1}
-                          value={seg.config.patternRotation ?? 0}
-                          onChange={(val) => updateConfig(index, 'patternRotation', val)}
-                        />
-                      </div>
-                      <div className="col-span-2">
-                        <SliderInput
-                          label="Pattern Tumble"
-                          min={-5}
-                          max={5}
-                          step={0.1}
-                          value={seg.config.patternTumble ?? 0}
-                          onChange={(val) => updateConfig(index, 'patternTumble', val)}
-                        />
-                      </div>
-                    </>
                   )}
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Pattern Spin"
+                      min={-5}
+                      max={5}
+                      step={0.1}
+                      value={seg.config.patternSpin ?? 0}
+                      onChange={(val) => updateConfig(index, 'patternSpin', val)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Pattern Rotation"
+                      min={-5}
+                      max={5}
+                      step={0.1}
+                      value={seg.config.patternRotation ?? 0}
+                      onChange={(val) => updateConfig(index, 'patternRotation', val)}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <SliderInput
+                      label="Pattern Tumble"
+                      min={-5}
+                      max={5}
+                      step={0.1}
+                      value={seg.config.patternTumble ?? 0}
+                      onChange={(val) => updateConfig(index, 'patternTumble', val)}
+                    />
+                  </div>
                 </>
               ) : activeBubble.type === 'camera' ? (
                 <>
