@@ -19,6 +19,10 @@ export function createControlForLine(line: TextLine, color: string, fontFamily: 
     tb.fontFamily = fontFamily;
     tb.fontSize = baseSize;
     tb.resizeToFit = true;
+    tb.paddingLeft = "10px";
+    tb.paddingRight = "10px";
+    tb.paddingTop = "10px";
+    tb.paddingBottom = "10px";
     panel.addControl(tb);
   }
 
@@ -40,6 +44,10 @@ export function createControlForLine(line: TextLine, color: string, fontFamily: 
       if (token.italic) tb.fontStyle = "italic";
 
       tb.resizeToFit = true;
+      tb.paddingLeft = "10px";
+      tb.paddingRight = "10px";
+      tb.paddingTop = "10px";
+      tb.paddingBottom = "10px";
       panel.addControl(tb);
     } else if (token.type === 'wordlist') {
       const count = token.count || 1;
@@ -61,6 +69,10 @@ export function createControlForLine(line: TextLine, color: string, fontFamily: 
         if (token.bold) tb.fontWeight = "bold";
         if (token.italic) tb.fontStyle = "italic";
         tb.resizeToFit = true;
+        tb.paddingLeft = "10px";
+        tb.paddingRight = "10px";
+        tb.paddingTop = "10px";
+        tb.paddingBottom = "10px";
         
         (tb as any).wordListConfig = token;
         (tb as any).wordListTimer = 0;
@@ -89,6 +101,10 @@ export function createControlsForWords(line: TextLine, color: string, fontFamily
     tb.fontFamily = fontFamily;
     tb.fontSize = baseSize;
     tb.resizeToFit = true;
+    tb.paddingLeft = "10px";
+    tb.paddingRight = "10px";
+    tb.paddingTop = "10px";
+    tb.paddingBottom = "10px";
     controls.push(tb);
   }
 
@@ -112,6 +128,10 @@ export function createControlsForWords(line: TextLine, color: string, fontFamily
         if (token.italic) tb.fontStyle = "italic";
 
         tb.resizeToFit = true;
+        tb.paddingLeft = "10px";
+        tb.paddingRight = "10px";
+        tb.paddingTop = "10px";
+        tb.paddingBottom = "10px";
         controls.push(tb);
       }
     } else if (token.type === 'wordlist') {
@@ -135,6 +155,10 @@ export function createControlsForWords(line: TextLine, color: string, fontFamily
         if (token.bold) tb.fontWeight = "bold";
         if (token.italic) tb.fontStyle = "italic";
         tb.resizeToFit = true;
+        tb.paddingLeft = "10px";
+        tb.paddingRight = "10px";
+        tb.paddingTop = "10px";
+        tb.paddingBottom = "10px";
         
         (tb as any).wordListConfig = token;
         (tb as any).wordListTimer = 0;

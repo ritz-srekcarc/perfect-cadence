@@ -477,13 +477,13 @@ export default function App() {
    */
   useEffect(() => {
     if (!isPlaying && sceneManagerRef.current && segments.length > 0) {
-      const currentSegment = segments[0];
+      const currentSegment = segments[currentSegmentIndex] || segments[0];
       sceneManagerRef.current.applyConfig(currentSegment.config);
       sceneManagerRef.current.updateText(currentSegment.text, currentSegment.auxText);
       sceneManagerRef.current.updateMedia(currentSegment.media);
       sceneManagerRef.current.updateXRProgress(0, currentSegment.config.duration);
     }
-  }, [segments, isPlaying]);
+  }, [segments, isPlaying, currentSegmentIndex]);
 
   /**
    * Playback Logic: Handle Segment Transitions

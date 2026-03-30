@@ -50,6 +50,8 @@ export class SceneManager {
   private currentConfig: SegmentConfig | null = null;
   private particleSystems: ParticleSystem[] = [];
   private baseEmitRate: number = 0;
+  private roomMesh: Mesh | null = null;
+  private horizonMesh: Mesh | null = null;
 
   public getScene(): Scene {
     return this.scene;
@@ -437,9 +439,19 @@ export class SceneManager {
     this.textPlane = plane;
 
     // High resolution to avoid blocky glitches
-    this.textTexture = GUI.AdvancedDynamicTexture.CreateForMesh(plane, 2048, 1024);
+    this.textTexture = GUI.AdvancedDynamicTexture.CreateForMesh(plane, 2048, 1024, true, false);
     this.textTexture.updateSamplingMode(Texture.TRILINEAR_SAMPLINGMODE);
     
+    const textMat = plane.material as StandardMaterial;
+    if (textMat) {
+      textMat.transparencyMode = 2; // Material.MATERIAL_ALPHABLEND
+      textMat.useAlphaFromDiffuseTexture = true;
+      textMat.diffuseTexture = this.textTexture;
+      textMat.emissiveTexture = this.textTexture;
+      textMat.opacityTexture = null;
+      this.textTexture.hasAlpha = true;
+    }
+
     this.textBackground = new GUI.Rectangle();
     this.textBackground.width = 1;
     this.textBackground.height = 1;
@@ -454,9 +466,19 @@ export class SceneManager {
     this.auxTextPlane = auxPlane;
     this.auxTextPlane.isVisible = false;
 
-    this.auxTextTexture = GUI.AdvancedDynamicTexture.CreateForMesh(auxPlane, 2048, 1024);
+    this.auxTextTexture = GUI.AdvancedDynamicTexture.CreateForMesh(auxPlane, 2048, 1024, true, false);
     this.auxTextTexture.updateSamplingMode(Texture.TRILINEAR_SAMPLINGMODE);
     
+    const auxMat = auxPlane.material as StandardMaterial;
+    if (auxMat) {
+      auxMat.transparencyMode = 2; // Material.MATERIAL_ALPHABLEND
+      auxMat.useAlphaFromDiffuseTexture = true;
+      auxMat.diffuseTexture = this.auxTextTexture;
+      auxMat.emissiveTexture = this.auxTextTexture;
+      auxMat.opacityTexture = null;
+      this.auxTextTexture.hasAlpha = true;
+    }
+
     this.auxTextBackground = new GUI.Rectangle();
     this.auxTextBackground.width = 1;
     this.auxTextBackground.height = 1;
@@ -833,6 +855,9 @@ export class SceneManager {
       this.auxTextBackground.background = config.auxBackdrop ? "rgba(0,0,0,0.5)" : "transparent";
     }
 
+    this.updateRoom();
+    this.updateHorizon();
+
     // Apply advanced camera options
     if (config.cameraFov !== undefined && config.cameraFov > 0) {
       this.camera.fov = config.cameraFov * (Math.PI / 180);
@@ -893,25 +918,103 @@ export class SceneManager {
   }
 
   private getPaletteColor(index: number, defaultColor?: Color3): Color3 {
-    const palette = this.currentConfig?.palette || ['#ffffff', '#00ff88', '#0066ff'];
-    if (palette && palette.length > 0) {
-      const hex = palette[index % palette.length];
-      return this.parseColor(hex, defaultColor);
-    }
-    // Fallback to patternColor1/2 if palette is missing (for backward compatibility during transition)
+    let result: Color3;
+    // If patternColor1/2 are explicitly set, they override the palette for index 0 and 1
     if (index === 0 && this.currentConfig?.patternColor1) {
-      return this.parseColor(this.currentConfig.patternColor1, defaultColor);
+      result = this.parseColor(this.currentConfig.patternColor1, defaultColor);
+    } else if (index === 1) {
+      if (this.currentConfig?.patternColor2) {
+        result = this.parseColor(this.currentConfig.patternColor2, defaultColor);
+      } else if (this.currentConfig?.patternColor1) {
+        // If only color1 is set, use it for color2 as well to avoid unexpected palette colors
+        result = this.parseColor(this.currentConfig.patternColor1, defaultColor);
+      } else if (this.currentConfig?.palette && this.currentConfig.palette.length > 0) {
+        const hex = this.currentConfig.palette[index % this.currentConfig.palette.length];
+        result = this.parseColor(hex, defaultColor);
+      } else {
+        const defaultPalette = ['#ffffff', '#00ff88', '#0066ff'];
+        const hex = defaultPalette[index % defaultPalette.length];
+        result = this.parseColor(hex, defaultColor);
+      }
+    } else if (this.currentConfig?.palette && this.currentConfig.palette.length > 0) {
+      const hex = this.currentConfig.palette[index % this.currentConfig.palette.length];
+      result = this.parseColor(hex, defaultColor);
+    } else {
+      // Default palette if nothing is specified
+      const defaultPalette = ['#ffffff', '#00ff88', '#0066ff'];
+      const hex = defaultPalette[index % defaultPalette.length];
+      result = this.parseColor(hex, defaultColor);
     }
-    if (index === 1 && this.currentConfig?.patternColor2) {
-      return this.parseColor(this.currentConfig.patternColor2, defaultColor);
-    }
-    return defaultColor || new Color3(1, 1, 1);
+    
+    return result;
   }
 
   private parseColor(hex?: string, defaultColor?: Color3): Color3 {
     if (!hex) return defaultColor || new Color3(1, 1, 1);
     try {
-      return Color3.FromHexString(hex.startsWith('#') ? hex : `#${hex}`);
+      let colorStr = hex.toLowerCase().trim();
+      
+      // Handle CSS color names
+      const colorNames: { [key: string]: string } = {
+        aliceblue: '#f0f8ff', antiquewhite: '#faebd7', aqua: '#00ffff', aquamarine: '#7fffd4', azure: '#f0ffff',
+        beige: '#f5f5dc', bisque: '#ffe4c4', black: '#000000', blanchedalmond: '#ffebcd', blue: '#0000ff',
+        blueviolet: '#8a2be2', brown: '#a52a2a', burlywood: '#deb887', cadetblue: '#5f9ea0', chartreuse: '#7fff00',
+        chocolate: '#d2691e', coral: '#ff7f50', cornflowerblue: '#6495ed', cornsilk: '#fff8dc', crimson: '#dc143c',
+        cyan: '#00ffff', darkblue: '#00008b', darkcyan: '#008b8b', darkgoldenrod: '#b8860b', darkgray: '#a9a9a9',
+        darkgreen: '#006400', darkgrey: '#a9a9a9', darkkhaki: '#bdb76b', darkmagenta: '#8b008b', darkolivegreen: '#556b2f',
+        darkorange: '#ff8c00', darkorchid: '#9932cc', darkred: '#8b0000', darksalmon: '#e9967a', darkseagreen: '#8fbc8f',
+        darkslateblue: '#483d8b', darkslategray: '#2f4f4f', darkslategrey: '#2f4f4f', darkturquoise: '#00ced1',
+        darkviolet: '#9400d3', deeppink: '#ff1493', deepskyblue: '#00bfff', dimgray: '#696969', dimgrey: '#696969',
+        dodgerblue: '#1e90ff', firebrick: '#b22222', floralwhite: '#fffaf0', forestgreen: '#228b22', fuchsia: '#ff00ff',
+        gainsboro: '#dcdcdc', ghostwhite: '#f8f8ff', gold: '#ffd700', goldenrod: '#daa520', gray: '#808080',
+        green: '#008000', greenyellow: '#adff2f', grey: '#808080', honeydew: '#f0fff0', hotpink: '#ff69b4',
+        indianred: '#cd5c5c', indigo: '#4b0082', ivory: '#fffff0', khaki: '#f0e68c', lavender: '#e6e6fa',
+        lavenderblush: '#fff0f5', lawngreen: '#7cfc00', lemonchiffon: '#fffacd', lightblue: '#add8e6',
+        lightcoral: '#f08080', lightcyan: '#e0ffff', lightgoldenrodyellow: '#fafad2', lightgray: '#d3d3d3',
+        lightgreen: '#90ee90', lightgrey: '#d3d3d3', lightpink: '#ffb6c1', lightsalmon: '#ffa07a',
+        lightseagreen: '#20b2aa', lightskyblue: '#87cefa', lightslategray: '#778899', lightslategrey: '#778899',
+        lightsteelblue: '#b0c4de', lightyellow: '#ffffe0', lime: '#00ff00', limegreen: '#32cd32', linen: '#faf0e6',
+        magenta: '#ff00ff', maroon: '#800000', mediumaquamarine: '#66cdaa', mediumblue: '#0000cd',
+        mediumorchid: '#ba55d3', mediumpurple: '#9370db', mediumseagreen: '#3cb371', mediumslateblue: '#7b68ee',
+        mediumspringgreen: '#00fa9a', mediumturquoise: '#48d1cc', mediumvioletred: '#c71585', midnightblue: '#191970',
+        mintcream: '#f5fffa', mistyrose: '#ffe4e1', moccasin: '#ffe4b5', navajowhite: '#ffdead', navy: '#000080',
+        oldlace: '#fdf5e6', olive: '#808000', olivedrab: '#6b8e23', orange: '#ffa500', orangered: '#ff4500',
+        orchid: '#da70d6', palegoldenrod: '#eee8aa', palegreen: '#98fb98', paleturquoise: '#afeeee',
+        palevioletred: '#db7093', papayawhip: '#ffefd5', peachpuff: '#ffdab9', peru: '#cd853f', pink: '#ffc0cb',
+        plum: '#dda0dd', powderblue: '#b0e0e6', purple: '#800080', rebeccapurple: '#663399', red: '#ff0000',
+        rosybrown: '#bc8f8f', royalblue: '#4169e1', saddlebrown: '#8b4513', salmon: '#fa8072', sandybrown: '#f4a460',
+        seagreen: '#2e8b57', seashell: '#fff5ee', sienna: '#a0522d', silver: '#c0c0c0', skyblue: '#87ceeb',
+        slateblue: '#6a5acd', slategray: '#708090', slategrey: '#708090', snow: '#fffafa', springgreen: '#00ff7f',
+        steelblue: '#4682b4', tan: '#d2b48c', teal: '#008080', thistle: '#d8bfd8', tomato: '#ff6347',
+        turquoise: '#40e0d0', violet: '#ee82ee', wheat: '#f5deb3', white: '#ffffff', whitesmoke: '#f5f5f5',
+        yellow: '#ffff00', yellowgreen: '#9acd32'
+      };
+      
+      if (colorNames[colorStr]) {
+        colorStr = colorNames[colorStr];
+      } else if (colorStr.startsWith('#')) {
+        // Expand 3-digit hex to 6-digit hex
+        if (colorStr.length === 4) {
+          colorStr = '#' + colorStr[1] + colorStr[1] + colorStr[2] + colorStr[2] + colorStr[3] + colorStr[3];
+        }
+      } else {
+        // Assume it's a hex without #
+        if (colorStr.length === 3) {
+          colorStr = '#' + colorStr[0] + colorStr[0] + colorStr[1] + colorStr[1] + colorStr[2] + colorStr[2];
+        } else {
+          colorStr = '#' + colorStr;
+        }
+      }
+      
+      const color = Color3.FromHexString(colorStr);
+      // Color3.FromHexString returns black or NaN for invalid hex
+      if (Number.isNaN(color.r) || Number.isNaN(color.g) || Number.isNaN(color.b)) {
+        return defaultColor || new Color3(1, 1, 1);
+      }
+      if (color.r === 0 && color.g === 0 && color.b === 0 && colorStr !== '#000000') {
+        return defaultColor || new Color3(1, 1, 1);
+      }
+      return color;
     } catch (e) {
       return defaultColor || new Color3(1, 1, 1);
     }
@@ -1141,7 +1244,7 @@ export class SceneManager {
     
     const ps = new ParticleSystem("particles", Math.floor(2000 * complexity * density), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
+    ps.particleTexture = new Texture("https://assets.babylonjs.com/textures/flare.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
     ps.minEmitBox = new Vector3(-5 * scale, -5 * scale, -5 * scale);
     ps.maxEmitBox = new Vector3(5 * scale, 5 * scale, 5 * scale);
@@ -1180,7 +1283,7 @@ export class SceneManager {
     // Create the flame particle system
     const ps = new ParticleSystem("flame", Math.floor(1000 * complexity * density), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
+    ps.particleTexture = new Texture("https://assets.babylonjs.com/textures/flare.png", this.scene);
     
     const emitterMesh = new Mesh("flameEmitter", this.scene);
     emitterMesh.parent = root;
@@ -1348,6 +1451,93 @@ export class SceneManager {
     }
   }
 
+  private updateRoom() {
+    const config = this.currentConfig;
+    if (!config || !config.roomEnabled) {
+      if (this.roomMesh) this.roomMesh.isVisible = false;
+      return;
+    }
+
+    if (!this.roomMesh) {
+      this.roomMesh = MeshBuilder.CreateBox("room", { size: 1, sideOrientation: Mesh.BACKSIDE }, this.scene);
+      const mat = new StandardMaterial("roomMat", this.scene);
+      mat.disableLighting = true;
+      this.roomMesh.material = mat;
+    }
+
+    this.roomMesh.isVisible = true;
+    const size = config.roomSize || 100;
+    this.roomMesh.scaling = new Vector3(size, size, size);
+    
+    const mat = this.roomMesh.material as StandardMaterial;
+    const color = config.roomColor || "#00ff00";
+    mat.emissiveColor = Color3.FromHexString(color);
+    mat.alpha = config.roomIntensity || 0.5;
+    
+    // Grid texture for "reference lines"
+    if (!mat.emissiveTexture) {
+      const gridTexture = new DynamicTexture("roomGrid", 1024, this.scene, true);
+      const ctx = gridTexture.getContext();
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 10;
+      const step = 1024 / 10;
+      for (let i = 0; i <= 1024; i += step) {
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, 1024);
+        ctx.moveTo(0, i);
+        ctx.lineTo(1024, i);
+      }
+      ctx.stroke();
+      gridTexture.update();
+      mat.emissiveTexture = gridTexture;
+      mat.opacityTexture = gridTexture;
+    }
+  }
+
+  private updateHorizon() {
+    const config = this.currentConfig;
+    if (!config || !config.horizonEnabled) {
+      if (this.horizonMesh) this.horizonMesh.isVisible = false;
+      return;
+    }
+
+    if (!this.horizonMesh) {
+      this.horizonMesh = MeshBuilder.CreatePlane("horizon", { size: 1 }, this.scene);
+      this.horizonMesh.rotation.x = Math.PI / 2;
+      const mat = new StandardMaterial("horizonMat", this.scene);
+      mat.disableLighting = true;
+      this.horizonMesh.material = mat;
+    }
+
+    this.horizonMesh.isVisible = true;
+    const size = config.horizonSize || 2000;
+    this.horizonMesh.scaling = new Vector3(size, size, size);
+    this.horizonMesh.position.y = -10; // Floor level
+    
+    const mat = this.horizonMesh.material as StandardMaterial;
+    const color = config.horizonColor || "#00ffff";
+    mat.emissiveColor = Color3.FromHexString(color);
+    mat.alpha = config.horizonIntensity || 0.5;
+
+    if (!mat.emissiveTexture) {
+      const gridTexture = new DynamicTexture("horizonGrid", 1024, this.scene, true);
+      const ctx = gridTexture.getContext();
+      ctx.strokeStyle = "white";
+      ctx.lineWidth = 5;
+      const step = 1024 / 20;
+      for (let i = 0; i <= 1024; i += step) {
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i, 1024);
+        ctx.moveTo(0, i);
+        ctx.lineTo(1024, i);
+      }
+      ctx.stroke();
+      gridTexture.update();
+      mat.emissiveTexture = gridTexture;
+      mat.opacityTexture = gridTexture;
+    }
+  }
+
   private createFascinator(pattern: string, parent: Mesh) {
     const oldRoot = this.patternRoot;
     this.patternRoot = parent;
@@ -1384,7 +1574,7 @@ export class SceneManager {
     
     const ps = new ParticleSystem("nebula", Math.floor(3000 * complexity * density), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/cloud.png", this.scene);
+    ps.particleTexture = new Texture("https://assets.babylonjs.com/textures/cloud.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
     
     ps.minEmitBox = new Vector3(-15 * scale, -10 * scale, -15 * scale);
@@ -1430,15 +1620,17 @@ export class SceneManager {
     
     const ps = new ParticleSystem("smoke", Math.floor(2000 * complexity), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/smoke.png", this.scene);
+    ps.particleTexture = new Texture("https://assets.babylonjs.com/textures/cloud.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
     
     ps.minEmitBox = new Vector3(-2 * scale, -5 * scale, -2 * scale);
     ps.maxEmitBox = new Vector3(2 * scale, -5 * scale, 2 * scale);
     
-    const baseColor = this.getPaletteColor(0, new Color3(0.5, 0.5, 0.5));
-    ps.color1 = baseColor.toColor4(0.6);
-    ps.color2 = baseColor.scale(0.5).toColor4(0.3);
+    const color1 = this.getPaletteColor(0, new Color3(0.5, 0.5, 0.5));
+    const color2 = this.getPaletteColor(1, color1.scale(0.5));
+    
+    ps.color1 = color1.toColor4(0.6);
+    ps.color2 = color2.toColor4(0.3);
     ps.colorDead = new Color3(0, 0, 0).toColor4(0);
     
     ps.minSize = 2 * scale;
@@ -1464,9 +1656,9 @@ export class SceneManager {
     ps.addSizeGradient(1, 4 * scale);
     
     // Fade out
-    ps.addColorGradient(0, baseColor.toColor4(0));
-    ps.addColorGradient(0.2, baseColor.toColor4(0.6));
-    ps.addColorGradient(1, baseColor.scale(0.2).toColor4(0));
+    ps.addColorGradient(0, color1.toColor4(0));
+    ps.addColorGradient(0.2, color1.toColor4(0.6));
+    ps.addColorGradient(1, color2.toColor4(0));
     
     ps.start();
   }
@@ -1478,7 +1670,7 @@ export class SceneManager {
     
     const ps = new ParticleSystem("fluid", Math.floor(4000 * complexity), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
+    ps.particleTexture = new Texture("https://assets.babylonjs.com/textures/flare.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
     
     ps.minEmitBox = new Vector3(-10 * scale, -10 * scale, -10 * scale);
@@ -1524,7 +1716,7 @@ export class SceneManager {
     
     const ps = new ParticleSystem("swarm", Math.floor(2000 * complexity), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
+    ps.particleTexture = new Texture("https://assets.babylonjs.com/textures/flare.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
     
     ps.minEmitBox = new Vector3(-8 * scale, -8 * scale, -8 * scale);
@@ -1570,14 +1762,17 @@ export class SceneManager {
     
     const ps = new ParticleSystem("constellation", Math.floor(1000 * complexity), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/star.png", this.scene);
+    ps.particleTexture = new Texture("https://assets.babylonjs.com/textures/flare.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
     
     ps.minEmitBox = new Vector3(-20 * scale, -20 * scale, -20 * scale);
     ps.maxEmitBox = new Vector3(20 * scale, 20 * scale, 20 * scale);
     
-    ps.color1 = this.getPaletteColor(0, new Color3(1.0, 1.0, 1.0)).toColor4(1.0);
-    ps.color2 = this.getPaletteColor(1, new Color3(0.8, 0.9, 1.0)).toColor4(0.8);
+    const color1 = this.getPaletteColor(0, new Color3(1.0, 1.0, 1.0));
+    const color2 = this.getPaletteColor(1, new Color3(0.8, 0.9, 1.0));
+    
+    ps.color1 = color1.toColor4(1.0);
+    ps.color2 = color2.toColor4(0.8);
     ps.colorDead = new Color3(0, 0, 0).toColor4(0);
     
     ps.minSize = 0.5 * scale;
@@ -1599,11 +1794,11 @@ export class SceneManager {
     ps.updateSpeed = 0.005 * Math.abs(speed);
     
     // Twinkle effect
-    ps.addColorGradient(0, new Color3(0, 0, 0).toColor4(0));
-    ps.addColorGradient(0.1, new Color3(1, 1, 1).toColor4(1));
-    ps.addColorGradient(0.5, new Color3(0.5, 0.5, 0.5).toColor4(0.5));
-    ps.addColorGradient(0.9, new Color3(1, 1, 1).toColor4(1));
-    ps.addColorGradient(1, new Color3(0, 0, 0).toColor4(0));
+    ps.addColorGradient(0, color1.toColor4(0));
+    ps.addColorGradient(0.1, color1.toColor4(1));
+    ps.addColorGradient(0.5, color2.toColor4(0.5));
+    ps.addColorGradient(0.9, color1.toColor4(1));
+    ps.addColorGradient(1, color1.toColor4(0));
     
     ps.start();
   }
@@ -1615,7 +1810,7 @@ export class SceneManager {
     
     const ps = new ParticleSystem("bubbles", Math.floor(1000 * complexity), this.scene);
     this.particleSystems.push(ps);
-    ps.particleTexture = new Texture("https://raw.githubusercontent.com/BabylonJS/Babylon.js/master/packages/tools/playground/public/textures/flare.png", this.scene);
+    ps.particleTexture = new Texture("https://assets.babylonjs.com/textures/flare.png", this.scene);
     ps.emitter = this.patternRoot || Vector3.Zero();
     
     // Emit from a base plane
@@ -2182,11 +2377,11 @@ export class SceneManager {
             
             child.material.setInt("numArmColors", armColorsHex.length);
             child.material.setFloat("hasOutline", hasOutline);
-            child.material.setColor3("outlineColor", Color3.FromHexString(outlineColorHex));
+            child.material.setColor3("outlineColor", this.parseColor(outlineColorHex));
             
             for (let i = 0; i < 10; i++) {
                 const hex = armColorsHex[i % armColorsHex.length];
-                child.material.setColor3(`color${i}`, Color3.FromHexString(hex));
+                child.material.setColor3(`color${i}`, this.parseColor(hex));
             }
           }
         }
@@ -2305,7 +2500,7 @@ export class SceneManager {
       }
     }
 
-    if ((pattern === 'flat spiral' || pattern === 'thicc spiral' || pattern === 'cone spiral' || pattern === 'spiral' || pattern === 'galaxy' || pattern === 'vortex' || pattern === 'nautilus spiral') && this.currentMeshes.length > 0) {
+    if ((pattern === 'flat spiral' || pattern === 'thicc spiral' || pattern === 'cone spiral' || pattern === 'galaxy' || pattern === 'nautilus spiral') && this.currentMeshes.length > 0) {
       this.currentMeshes.forEach((m, i) => {
         if (pattern === 'flat spiral' || pattern === 'thicc spiral') {
           m.rotation.z -= 0.01 * animSpeed;
@@ -2382,10 +2577,22 @@ export class SceneManager {
     } else if (pattern === 'tunnel' && this.currentMeshes.length > 0) {
       const scale = this.currentConfig.patternScale ?? 1.0;
       const length = this.currentConfig.patternLength ?? 100;
+      const scrollSpeed = animSpeed * 5;
+      const scrollOffset = this.time * scrollSpeed;
+      
+      // Translational movement like shaft
       const segmentLength = (length * scale) / 50; // 2 * scale
-      const offset = (this.time * animSpeed * 5) % segmentLength;
+      const translationOffset = (this.time * animSpeed * 5) % segmentLength;
       
       this.currentMeshes.forEach((m, i) => {
+        // Smoothly follow camera target for infinite tunnel effect without jumps
+        if (this.currentConfig.camera === 'fly') {
+          const baseZ = Math.floor(this.camera.target.z / segmentLength) * segmentLength;
+          m.position.z = baseZ - translationOffset;
+        } else {
+          m.position.z = -translationOffset;
+        }
+
         if (m.metadata && m.metadata.pathLength) {
           const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
           const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
@@ -2402,10 +2609,17 @@ export class SceneManager {
             const t = j / (pathLength - 1);
             const z = (t - 0.5) * length * scale;
             const worldZ = z + m.position.z;
-            const def = Math.sin(worldZ * (10.0 / (length * scale)) - this.time * animSpeed * 2.0) * elasticity;
-            const angle = armOffset + (t * Math.PI * 4 + def) * curvature;
-            const r = radius * scale;
             
+            // Use worldZ and scrollOffset for continuous motion
+            const movingZ = worldZ + scrollOffset;
+            
+            // Wave deformation
+            const def = Math.sin(movingZ * (10.0 / (length * scale))) * elasticity;
+            
+            // Spiral angle based on movingZ for continuous scrolling
+            const angle = armOffset + (movingZ * Math.PI * 4 / (length * scale) + def) * curvature;
+            
+            const r = radius * scale;
             const x = Math.cos(angle) * r;
             const y = Math.sin(angle) * r;
             
@@ -2423,13 +2637,6 @@ export class SceneManager {
             radiusFunction: tubeRadiusFunc,
             instance: m as any 
           });
-        }
-        
-        if (this.currentConfig.camera === 'fly') {
-          const baseZ = Math.floor(this.camera.target.z / segmentLength) * segmentLength;
-          m.position.z = baseZ - offset;
-        } else {
-          m.position.z = -offset;
         }
       });
     } else if (pattern === 'shaft' && this.currentMeshes.length > 0) {
@@ -2504,7 +2711,7 @@ export class SceneManager {
         }
         cylinder.updateVerticesData(VertexBuffer.PositionKind, positions);
       }
-    } else if (pattern === 'ring' || pattern === 'grid') {
+    } else if (pattern === 'ring' || pattern === 'vortex') {
       this.currentMeshes.forEach((m, i) => {
         if (i > 0) { // Skip base mesh
           m.rotation.x += 0.01 * (i % 3 + 1) * animSpeed;
@@ -2692,9 +2899,9 @@ export class SceneManager {
       if (outlineType === 'rainbow') {
         const hue = Math.floor((time * 50) % 360);
         outlineColor = `hsl(${hue}, 100%, 50%)`;
-        outlineWidth = 8;
+        outlineWidth = config?.textOutlineWidth ?? 8;
       } else if (outlineType === 'solid') {
-        outlineWidth = 8;
+        outlineWidth = config?.textOutlineWidth ?? 8;
       }
 
       const animType = config?.textAnimType ?? 'none';
@@ -2727,39 +2934,32 @@ export class SceneManager {
       this.applyDisplayPattern(this.textControls, pattern, time, false);
 
       const hasShading = config?.textShading ?? false;
+      const textColor = config?.textColor ?? "#ffffff";
+
+      const applyToTextBlocks = (control: GUI.Control, callback: (tb: GUI.TextBlock) => void) => {
+        if (control instanceof GUI.TextBlock) {
+          callback(control);
+        } else if (control instanceof GUI.Container) {
+          control.children.forEach(child => applyToTextBlocks(child, callback));
+        }
+      };
 
       this.textControls.forEach(c => {
-        if (c instanceof GUI.TextBlock) {
-          c.outlineColor = outlineColor;
-          c.outlineWidth = outlineWidth;
+        applyToTextBlocks(c, (tb) => {
+          tb.color = textColor;
+          tb.outlineColor = outlineColor;
+          tb.outlineWidth = outlineWidth;
           if (hasShading) {
-            c.shadowColor = "rgba(0,0,0,0.8)";
-            c.shadowBlur = 10;
-            c.shadowOffsetX = 5;
-            c.shadowOffsetY = 5;
+            tb.shadowColor = "rgba(0,0,0,0.8)";
+            tb.shadowBlur = 10;
+            tb.shadowOffsetX = 5;
+            tb.shadowOffsetY = 5;
           } else {
-            c.shadowBlur = 0;
-            c.shadowOffsetX = 0;
-            c.shadowOffsetY = 0;
+            tb.shadowBlur = 0;
+            tb.shadowOffsetX = 0;
+            tb.shadowOffsetY = 0;
           }
-        } else if (c instanceof GUI.StackPanel) {
-          c.children.forEach(child => {
-            if (child instanceof GUI.TextBlock) {
-              child.outlineColor = outlineColor;
-              child.outlineWidth = outlineWidth;
-              if (hasShading) {
-                child.shadowColor = "rgba(0,0,0,0.8)";
-                child.shadowBlur = 10;
-                child.shadowOffsetX = 5;
-                child.shadowOffsetY = 5;
-              } else {
-                child.shadowBlur = 0;
-                child.shadowOffsetX = 0;
-                child.shadowOffsetY = 0;
-              }
-            }
-          });
-        }
+        });
 
         c.alpha = 1.0;
         c.rotation = 0;
@@ -2773,19 +2973,20 @@ export class SceneManager {
           c.scaleX = 1.0 + Math.sin(time * 4 * animSpeed) * 0.1 * animIntensity;
           c.scaleY = 1.0 + Math.cos(time * 4 * animSpeed) * 0.1 * animIntensity;
         } else if (animType === 'prism') {
-          if (c instanceof GUI.TextBlock) {
-            c.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
-            c.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
-            c.shadowBlur = 15;
-            c.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
-          }
+          applyToTextBlocks(c, (tb) => {
+            tb.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
+            tb.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
+            tb.shadowBlur = 15;
+            tb.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
+          });
         } else if (animType === 'glitch') {
           if (Math.random() > 0.9 - (0.1 * animIntensity)) {
             c.alpha = Math.random();
-            if (c instanceof GUI.TextBlock) c.color = Math.random() > 0.5 ? "cyan" : "magenta";
+            const glitchColor = Math.random() > 0.5 ? "cyan" : "magenta";
+            applyToTextBlocks(c, (tb) => { tb.color = glitchColor; });
           } else {
             c.alpha = 1.0;
-            if (c instanceof GUI.TextBlock) c.color = config?.textColor ?? "white";
+            applyToTextBlocks(c, (tb) => { tb.color = textColor; });
           }
         }
       });
@@ -2798,9 +2999,9 @@ export class SceneManager {
       if (outlineType === 'rainbow') {
         const hue = Math.floor((time * 50) % 360);
         outlineColor = `hsl(${hue}, 100%, 50%)`;
-        outlineWidth = 8;
+        outlineWidth = config?.auxOutlineWidth ?? 8;
       } else if (outlineType === 'solid') {
-        outlineWidth = 8;
+        outlineWidth = config?.auxOutlineWidth ?? 8;
       }
 
       const animType = config?.auxAnimType ?? 'none';
@@ -2832,39 +3033,32 @@ export class SceneManager {
       this.applyDisplayPattern(this.auxTextControls, pattern, time, true);
 
       const hasShading = config?.auxShading ?? false;
+      const auxColor = config?.auxColor ?? "#ffffff";
+
+      const applyToTextBlocks = (control: GUI.Control, callback: (tb: GUI.TextBlock) => void) => {
+        if (control instanceof GUI.TextBlock) {
+          callback(control);
+        } else if (control instanceof GUI.Container) {
+          control.children.forEach(child => applyToTextBlocks(child, callback));
+        }
+      };
 
       this.auxTextControls.forEach(c => {
-        if (c instanceof GUI.TextBlock) {
-          c.outlineColor = outlineColor;
-          c.outlineWidth = outlineWidth;
+        applyToTextBlocks(c, (tb) => {
+          tb.color = auxColor;
+          tb.outlineColor = outlineColor;
+          tb.outlineWidth = outlineWidth;
           if (hasShading) {
-            c.shadowColor = "rgba(0,0,0,0.8)";
-            c.shadowBlur = 10;
-            c.shadowOffsetX = 5;
-            c.shadowOffsetY = 5;
+            tb.shadowColor = "rgba(0,0,0,0.8)";
+            tb.shadowBlur = 10;
+            tb.shadowOffsetX = 5;
+            tb.shadowOffsetY = 5;
           } else {
-            c.shadowBlur = 0;
-            c.shadowOffsetX = 0;
-            c.shadowOffsetY = 0;
+            tb.shadowBlur = 0;
+            tb.shadowOffsetX = 0;
+            tb.shadowOffsetY = 0;
           }
-        } else if (c instanceof GUI.StackPanel) {
-          c.children.forEach(child => {
-            if (child instanceof GUI.TextBlock) {
-              child.outlineColor = outlineColor;
-              child.outlineWidth = outlineWidth;
-              if (hasShading) {
-                child.shadowColor = "rgba(0,0,0,0.8)";
-                child.shadowBlur = 10;
-                child.shadowOffsetX = 5;
-                child.shadowOffsetY = 5;
-              } else {
-                child.shadowBlur = 0;
-                child.shadowOffsetX = 0;
-                child.shadowOffsetY = 0;
-              }
-            }
-          });
-        }
+        });
 
         c.alpha = 1.0;
         c.rotation = 0;
@@ -2878,19 +3072,20 @@ export class SceneManager {
           c.scaleX = 1.0 + Math.sin(time * 4 * animSpeed) * 0.1 * animIntensity;
           c.scaleY = 1.0 + Math.cos(time * 4 * animSpeed) * 0.1 * animIntensity;
         } else if (animType === 'prism') {
-          if (c instanceof GUI.TextBlock) {
-            c.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
-            c.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
-            c.shadowBlur = 15;
-            c.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
-          }
+          applyToTextBlocks(c, (tb) => {
+            tb.shadowOffsetX = Math.sin(time * 5 * animSpeed) * 10 * animIntensity;
+            tb.shadowOffsetY = Math.cos(time * 5 * animSpeed) * 10 * animIntensity;
+            tb.shadowBlur = 15;
+            tb.shadowColor = `hsla(${(time * 100) % 360}, 100%, 50%, 0.5)`;
+          });
         } else if (animType === 'glitch') {
           if (Math.random() > 0.9 - (0.1 * animIntensity)) {
             c.alpha = Math.random();
-            if (c instanceof GUI.TextBlock) c.color = Math.random() > 0.5 ? "cyan" : "magenta";
+            const glitchColor = Math.random() > 0.5 ? "cyan" : "magenta";
+            applyToTextBlocks(c, (tb) => { tb.color = glitchColor; });
           } else {
             c.alpha = 1.0;
-            if (c instanceof GUI.TextBlock) c.color = config?.auxColor ?? "white";
+            applyToTextBlocks(c, (tb) => { tb.color = auxColor; });
           }
         }
       });

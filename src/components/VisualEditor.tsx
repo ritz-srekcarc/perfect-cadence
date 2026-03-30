@@ -191,6 +191,18 @@ interface SegmentEditorProps {
 const SliderInput = ({ label, value, min, max, step, onChange, logarithmic = false }: { label: string, value: number, min: number, max: number, step: number, onChange: (val: number) => void, logarithmic?: boolean }) => {
   const getSliderValue = () => {
     if (!logarithmic) return value;
+    
+    if (min < 0) {
+      // Symmetric log scale for negative ranges
+      const absMax = Math.max(Math.abs(min), Math.abs(max));
+      if (Math.abs(value) < 0.01) return 0.5;
+      const sign = value < 0 ? -1 : 1;
+      const minLog = Math.log(0.01);
+      const maxLog = Math.log(absMax);
+      const logVal = (Math.log(Math.abs(value)) - minLog) / (maxLog - minLog);
+      return 0.5 + (sign * 0.5 * Math.max(0, logVal));
+    }
+
     if (min === 0 && value === 0) return 0;
     
     // For logarithmic, map [min, max] to [0, 1]
@@ -209,6 +221,26 @@ const SliderInput = ({ label, value, min, max, step, onChange, logarithmic = fal
     if (!logarithmic) {
       onChange(rawVal);
     } else {
+      if (min < 0) {
+        const absMax = Math.max(Math.abs(min), Math.abs(max));
+        const centered = (rawVal - 0.5) * 2; // -1 to 1
+        if (Math.abs(centered) < 0.05) { // Deadzone around zero
+          onChange(0);
+          return;
+        }
+        const sign = centered < 0 ? -1 : 1;
+        const logVal = Math.abs(centered);
+        const minLog = Math.log(0.01);
+        const maxLog = Math.log(absMax);
+        const valLog = minLog + logVal * (maxLog - minLog);
+        let newVal = sign * Math.exp(valLog);
+        
+        // Round to step
+        newVal = Math.round(newVal / step) * step;
+        onChange(newVal);
+        return;
+      }
+
       if (min === 0 && rawVal === 0) {
         onChange(0);
         return;
@@ -825,7 +857,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
   };
 
   const [activeBubble, setActiveBubble] = useState<{ 
-    type: 'style' | 'animation' | 'speech' | 'binaural' | 'audio' | 'metronome' | 'pattern' | 'camera' | 'anim_config' | 'image' | 'video' | 'wordlist', 
+    type: 'style' | 'animation' | 'speech' | 'binaural' | 'audio' | 'metronome' | 'pattern' | 'camera' | 'anim_config' | 'image' | 'video' | 'wordlist' | 'room', 
     isAux?: boolean,
     index?: number
   } | null>(null);
@@ -1017,6 +1049,15 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
             >
               <Speech size={12} />
             </button>
+            <button 
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => setActiveBubble(activeBubble?.type === 'room' ? null : { type: 'room' })}
+              data-bubble-toggle="true"
+              className={`p-1 rounded transition-colors ${activeBubble?.type === 'room' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
+              title="Room & Horizon Options"
+            >
+              <LayoutGrid size={12} />
+            </button>
           </div>
         </div>
         <div className="flex gap-1 transition-opacity">
@@ -1056,6 +1097,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                  activeBubble.type === 'image' ? <Image size={14} /> :
                  activeBubble.type === 'video' ? <Tv size={14} /> :
                  activeBubble.type === 'wordlist' ? <Sparkles size={14} /> :
+                 activeBubble.type === 'room' ? <LayoutGrid size={14} /> :
                  <Timer size={14} />}
                 {activeBubble.isAux !== undefined ? (activeBubble.isAux ? 'Aux ' : 'Text ') : ''}
                 {activeBubble.type === 'style' ? 'Style' : 
@@ -1069,6 +1111,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                  activeBubble.type === 'image' ? 'Image' :
                  activeBubble.type === 'video' ? 'Video' :
                  activeBubble.type === 'wordlist' ? 'Wordlist' :
+                 activeBubble.type === 'room' ? 'Room & Horizon' :
                  'Metronome'}
               </h4>
               <button 
@@ -1258,6 +1301,69 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       value={seg.config.speech_speed ?? 1}
                       onChange={(val) => updateConfig(index, 'speech_speed', val)}
                     />
+                  </div>
+                </>
+              ) : activeBubble.type === 'room' ? (
+                <>
+                  <div className="flex flex-col gap-1 col-span-4 border-b border-zinc-800 pb-2 mb-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-zinc-500 uppercase font-bold">Reference Lines (Room)</label>
+                      <input 
+                        type="checkbox" 
+                        checked={!!seg.config.roomEnabled} 
+                        onChange={(e) => updateConfigs(index, { roomEnabled: e.target.checked, horizonEnabled: e.target.checked ? false : seg.config.horizonEnabled })} 
+                        className="accent-emerald-500"
+                      />
+                    </div>
+                    {seg.config.roomEnabled && (
+                      <div className="grid grid-cols-4 gap-3 mt-2">
+                        <div className="flex flex-col gap-1 col-span-2">
+                          <label className="text-[10px] text-zinc-500 uppercase font-bold">Color</label>
+                          <input 
+                            type="color" 
+                            value={seg.config.roomColor || '#00ff00'} 
+                            onChange={(e) => updateConfig(index, 'roomColor', e.target.value)} 
+                            className="w-full h-8 bg-zinc-950 border border-zinc-800 rounded cursor-pointer"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <SliderInput label="Size" value={seg.config.roomSize ?? 100} min={10} max={500} step={10} onChange={(val) => updateConfig(index, 'roomSize', val)} />
+                        </div>
+                        <div className="col-span-4">
+                          <SliderInput label="Intensity" value={seg.config.roomIntensity ?? 0.5} min={0} max={1} step={0.1} onChange={(val) => updateConfig(index, 'roomIntensity', val)} />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-col gap-1 col-span-4">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] text-zinc-500 uppercase font-bold">Horizon</label>
+                      <input 
+                        type="checkbox" 
+                        checked={!!seg.config.horizonEnabled} 
+                        onChange={(e) => updateConfigs(index, { horizonEnabled: e.target.checked, roomEnabled: e.target.checked ? false : seg.config.roomEnabled })} 
+                        className="accent-emerald-500"
+                      />
+                    </div>
+                    {seg.config.horizonEnabled && (
+                      <div className="grid grid-cols-4 gap-3 mt-2">
+                        <div className="flex flex-col gap-1 col-span-2">
+                          <label className="text-[10px] text-zinc-500 uppercase font-bold">Color</label>
+                          <input 
+                            type="color" 
+                            value={seg.config.horizonColor || '#00ffff'} 
+                            onChange={(e) => updateConfig(index, 'horizonColor', e.target.value)} 
+                            className="w-full h-8 bg-zinc-950 border border-zinc-800 rounded cursor-pointer"
+                          />
+                        </div>
+                        <div className="col-span-2">
+                          <SliderInput label="Size" value={seg.config.horizonSize ?? 2000} min={500} max={5000} step={100} onChange={(val) => updateConfig(index, 'horizonSize', val)} />
+                        </div>
+                        <div className="col-span-4">
+                          <SliderInput label="Intensity" value={seg.config.horizonIntensity ?? 0.5} min={0} max={1} step={0.1} onChange={(val) => updateConfig(index, 'horizonIntensity', val)} />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               ) : activeBubble.type === 'binaural' ? (
@@ -1771,12 +1877,12 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   <div className="col-span-2">
                     <SliderInput
                       label="Pattern Speed"
-                      min={seg.config.pattern?.includes('spiral') ? -5 : 0}
-                      max={(getValidPatternType(seg.config.patternType) === 'cloud' || ['tunnel', 'shaft'].includes(seg.config.pattern)) ? 500 : 5}
+                      min={-5}
+                      max={5}
                       step={0.1}
                       value={seg.config.patternSpeed ?? 1.0}
                       onChange={(val) => updateConfig(index, 'patternSpeed', val)}
-                      logarithmic={getValidPatternType(seg.config.patternType) === 'cloud' || ['tunnel', 'shaft'].includes(seg.config.pattern)}
+                      logarithmic={getValidPatternType(seg.config.patternType) === 'cloud'}
                     />
                   </div>
                   {(getValidPatternType(seg.config.patternType) === 'repetition' || getValidPatternType(seg.config.patternType) === 'cluster') && (
