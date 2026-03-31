@@ -630,9 +630,13 @@ export default function App() {
         style={!isMobile ? { width: `${sidebarWidth}px` } : {}}
       >
         <div className="p-4 border-b border-zinc-800 flex justify-between items-center bg-zinc-950">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 relative">
             <SpiralLogo size={18} />
             <h1 className="text-lg font-cursive text-emerald-400 whitespace-nowrap">Perfect Cadence</h1>
+            {/* BETA STAMP - REMOVE LATER */}
+            <div className="absolute -top-3 right-6 rotate-[15deg] border-2 border-red-500 text-red-500 text-[10px] font-black px-1 py-0.5 rounded-sm shadow-sm z-50 pointer-events-none tracking-widest uppercase bg-zinc-950/80 backdrop-blur-sm">
+              BETA
+            </div>
           </div>
             <div className="flex gap-2">
             {isMobile && (
@@ -739,9 +743,13 @@ export default function App() {
           <div className="absolute top-0 left-0 right-0 p-4 z-20 bg-gradient-to-b from-black/80 to-transparent flex flex-col gap-4">
             {/* Header Row: Logo/Name + Pill Menu + Action Buttons */}
             <div className="flex justify-between items-center w-full gap-4">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 relative">
                 <SpiralLogo size={20} />
                 <h1 className="text-lg font-cursive text-emerald-400 drop-shadow-md whitespace-nowrap">Perfect Cadence</h1>
+                {/* BETA STAMP - REMOVE LATER */}
+                <div className="absolute -top-3 right-6 rotate-[15deg] border-2 border-red-500 text-red-500 text-[10px] font-black px-1 py-0.5 rounded-sm shadow-sm z-50 pointer-events-none tracking-widest uppercase bg-zinc-950/80 backdrop-blur-sm">
+                  BETA
+                </div>
               </div>
               
             {/* Pill Menu (Horizontal on desktop/landscape) */}
@@ -1080,7 +1088,7 @@ export default function App() {
             <p className="text-zinc-400">Configure a segment using a <code>```config</code> block. If omitted, it inherits the previous segment's config.</p>
             <pre className="bg-zinc-950 border border-zinc-800 rounded-lg p-3 text-xs"><code>{`\`\`\`config
 duration: 10
-pattern: spiral
+pattern: antikythera
 camera: static
 binaural: focus
 metronome: 60

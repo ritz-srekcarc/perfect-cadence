@@ -12,7 +12,7 @@
 export interface SegmentConfig {
   duration: number; // in seconds
   patternType: 'fascinator' | 'repetition' | 'cloud' | 'cluster' | 'topology' | string;
-  pattern: 'fractal' | 'mandala' | 'particle' | 'flame' | 'dot' | 'flat spiral' | 'thicc spiral' | 'cone spiral' | 'pendulum' | 'tunnel' | 'shaft' | 'ring' | 'kaleido' | 'pulse' | 'nautilus spiral' | 'orb' | 'surface' | string;
+  pattern: 'fractal' | 'mandala' | 'particle' | 'flame' | 'dot' | 'flat spiral' | 'thicc spiral' | 'cone spiral' | 'pendulum' | 'tunnel' | 'shaft' | 'ring' | 'kaleido' | 'pulse' | 'nautilus spiral' | 'orb' | 'surface' | 'antikythera' | string;
   patternSpeed?: number;
   patternScale?: number;
   patternComplexity?: number;
@@ -250,7 +250,7 @@ const VALUE_MAP: Record<string, string> = {
   pulse: 'pu',
   grid: 'gr',
   helix: 'hel',
-  spiral: 'spi',
+  antikythera: 'ant',
   vortex: 'vor',
   sphere: 'sph',
   cube: 'cub',
@@ -389,7 +389,7 @@ export const SYNTAX_DOCS = {
   config: {
     duration: "number (seconds)",
     patternType: "string (fascinator, repetition, cloud, cluster, topology)",
-    pattern: "string (fractal, mandala, particle, flame, dot, flat spiral, thicc spiral, pendulum, nautilus spiral, orb, surface, shaft, tunnel, ring, kaleido, pulse)",
+    pattern: "string (fractal, mandala, particle, flame, dot, flat spiral, thicc spiral, pendulum, nautilus spiral, orb, surface, shaft, tunnel, ring, kaleido, pulse, antikythera)",
     patternSpeed: "number (multiplier)",
     patternScale: "number (multiplier)",
     patternComplexity: "number (detail level)",

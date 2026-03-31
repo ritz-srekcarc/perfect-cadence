@@ -1419,13 +1419,23 @@ export class SceneManager {
         // Snake-like progression
         instanceRoot.position.set(0, 0, i * 5 * scale);
       } else if (pattern === 'helix') {
-        const arms = 3; // Multi-armed spiral
+        const arms = config.spiralArms ?? 5;
+        const curvature = config.spiralCurvature ?? 1.0;
+        const radius = config.patternRadius ?? 7.5;
+        const length = config.patternLength ?? 100;
+        
         const arm = i % arms;
         const armOffset = (Math.PI * 2 / arms) * arm;
-        const idxInArm = Math.floor(i / arms);
-        const angle = idxInArm * 0.5 + armOffset;
-        const radius = 5 * scale;
-        instanceRoot.position.set(Math.cos(angle) * radius, idxInArm * 0.5 * scale, Math.sin(angle) * radius);
+        const t = count > 1 ? i / (count - 1) : 0;
+        
+        const angle = armOffset + (t * Math.PI * 4) * curvature;
+        const r = radius * scale;
+        
+        const x = Math.cos(angle) * r;
+        const y = Math.sin(angle) * r;
+        const z = (t - 0.5) * length * scale;
+        
+        instanceRoot.position.set(x, y, z);
       } else if (pattern === 'polygon') {
         // Torus arrangement - more complex 3D shape
         const majorRadius = 10 * scale;
@@ -1437,17 +1447,41 @@ export class SceneManager {
         const z = minorRadius * Math.sin(v);
         instanceRoot.position.set(x, y, z);
       } else if (pattern === 'vortex') {
-        const angle = i * 0.2;
-        const radius = Math.pow(i * 0.2, 1.5) * scale;
-        instanceRoot.position.set(Math.cos(angle) * radius, -i * 0.1 * scale, Math.sin(angle) * radius);
-      } else if (pattern === 'spiral') {
-        const angle = i * 0.5;
-        const radius = i * 0.5 * scale;
-        instanceRoot.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+        const arms = config.spiralArms ?? 5;
+        const curvature = config.spiralCurvature ?? 1.0;
+        const length = config.patternLength ?? 100;
+        const baseRadius = config.patternRadius ?? 7.5;
+        
+        const arm = i % arms;
+        const armOffset = (Math.PI * 2 / arms) * arm;
+        const t = count > 1 ? i / (count - 1) : 0;
+        
+        const angle = armOffset + (t * Math.PI * 8) * curvature;
+        const radius = Math.pow(t, 1.5) * baseRadius * 2 * scale;
+        
+        const x = Math.cos(angle) * radius;
+        const z = Math.sin(angle) * radius;
+        const y = (t - 0.5) * length * scale;
+        
+        instanceRoot.position.set(x, y, z);
+      } else if (pattern === 'antikythera') {
+        const arms = config.spiralArms ?? 5;
+        const curvature = config.spiralCurvature ?? 1.0;
+        const baseRadius = config.patternRadius ?? 7.5;
+        
+        const arm = i % arms;
+        const armOffset = (Math.PI * 2 / arms) * arm;
+        const t = count > 1 ? i / (count - 1) : 0;
+        
+        const angle = armOffset + (t * Math.PI * 4) * curvature;
+        const radius = t * baseRadius * 2 * scale;
+        
+        instanceRoot.position.set(Math.cos(angle) * radius, Math.sin(angle) * radius, 0);
       }
 
       // Create the base fascinator at this instance
       this.createFascinator(basePattern, instanceRoot);
+      instanceRoot.metadata = { originalPosition: instanceRoot.position.clone() };
     }
   }
 
@@ -1986,6 +2020,13 @@ export class SceneManager {
     shaderMaterial.setFloat("elasticity", elasticity);
     shaderMaterial.backFaceCulling = false;
 
+    const numArmColors = Math.min(10, Math.max(1, Math.ceil(arms)));
+    shaderMaterial.setInt("numArmColors", numArmColors);
+    for (let i = 0; i < 10; i++) {
+      const color = this.getPaletteColor(i, new Color3(1, 1, 1));
+      shaderMaterial.setColor3(`color${i}`, color);
+    }
+
     const disc = MeshBuilder.CreateDisc("flatSpiral", { radius: 10 * scale, tessellation: 64 }, this.scene);
     disc.parent = this.patternRoot;
     disc.material = shaderMaterial;
@@ -2309,7 +2350,7 @@ export class SceneManager {
           let flipAngle = Math.PI / 2;
           if (type === 'topology' && pattern !== 'orb' && pattern !== 'tunnel' && pattern !== 'shaft') {
             flipAngle = Math.PI / 3;
-          } else if (['mandala', 'flat spiral', 'clock', 'dial', 'wheel', 'pendulum', 'kaleido', 'flame', 'dot', 'grid'].includes(pattern)) {
+          } else if (['mandala', 'flat spiral', 'clock', 'dial', 'wheel', 'pendulum', 'kaleido', 'flame', 'dot', 'grid', 'antikythera', 'helix', 'vortex'].includes(pattern)) {
             flipAngle = 0;
           }
           
@@ -2421,6 +2462,85 @@ export class SceneManager {
           if (instance.position.z < -10 * scale) {
              instance.position.z = count * 5 * scale;
           }
+        }
+
+        if (pattern === 'helix' && instance.metadata?.originalPosition) {
+          const length = this.currentConfig?.patternLength ?? 100;
+          const segmentLength = length * scale;
+          const scrollSpeed = animSpeed * 5;
+          const zOffset = (this.time * scrollSpeed) % segmentLength;
+          
+          let newZ = instance.metadata.originalPosition.z - zOffset;
+          if (newZ < -segmentLength / 2) {
+            newZ += segmentLength;
+          }
+          
+          if (this.currentConfig?.camera === 'fly') {
+            const baseZ = Math.floor(this.camera.target.z / segmentLength) * segmentLength;
+            instance.position.z = baseZ + newZ;
+          } else {
+            instance.position.z = newZ;
+          }
+          
+          const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
+          const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
+          const arms = this.currentConfig?.spiralArms ?? 5;
+          const radius = this.currentConfig?.patternRadius ?? 7.5;
+          
+          const arm = i % arms;
+          const armOffset = (Math.PI * 2 / arms) * arm;
+          
+          const t = (newZ / (length * scale)) + 0.5;
+          const def = Math.sin(t * 10.0 - this.time * animSpeed * 2.0) * elasticity;
+          const angle = armOffset + (t * Math.PI * 4 + def) * curvature + (this.time * animSpeed * 0.5);
+          const r = radius * scale;
+          
+          instance.position.x = Math.cos(angle) * r;
+          instance.position.y = Math.sin(angle) * r;
+        } else if (pattern === 'vortex' && instance.metadata?.originalPosition) {
+          const arms = this.currentConfig?.spiralArms ?? 5;
+          const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
+          const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
+          const length = this.currentConfig?.patternLength ?? 100;
+          const baseRadius = this.currentConfig?.patternRadius ?? 7.5;
+          
+          const arm = i % arms;
+          const armOffset = (Math.PI * 2 / arms) * arm;
+          
+          const scrollSpeed = animSpeed * 10;
+          const yOffset = (this.time * scrollSpeed) % (length * scale);
+          let newY = instance.metadata.originalPosition.y + yOffset;
+          if (newY > (length * scale) / 2) {
+            newY -= (length * scale);
+          }
+          instance.position.y = newY;
+          
+          const newT = (newY / (length * scale)) + 0.5;
+          
+          const def = Math.sin(newT * 10.0 - this.time * animSpeed * 5.0) * elasticity;
+          const angle = armOffset + (newT * Math.PI * 8 + def) * curvature + (this.time * animSpeed * 2.0);
+          
+          const radiusPulse = 1.0 + Math.sin(this.time * animSpeed * 3.0 + newT * 5.0) * 0.1 * elasticity;
+          const newRadius = Math.pow(Math.max(0, newT), 1.5) * baseRadius * 2 * scale * radiusPulse;
+          
+          instance.position.x = Math.cos(angle) * newRadius;
+          instance.position.z = Math.sin(angle) * newRadius;
+        } else if (pattern === 'antikythera' && instance.metadata?.originalPosition) {
+          const arms = this.currentConfig?.spiralArms ?? 5;
+          const curvature = this.currentConfig?.spiralCurvature ?? 1.0;
+          const elasticity = this.currentConfig?.spiralElasticity ?? 0.5;
+          const baseRadius = this.currentConfig?.patternRadius ?? 7.5;
+          
+          const arm = i % arms;
+          const armOffset = (Math.PI * 2 / arms) * arm;
+          const t = count > 1 ? i / (count - 1) : 0;
+          
+          const def = Math.sin(t * 10.0 - this.time * animSpeed * 2.0) * elasticity;
+          const angle = armOffset + (t * Math.PI * 4 + def) * curvature + (this.time * animSpeed * 0.5);
+          const radius = t * baseRadius * 2 * scale;
+          
+          instance.position.x = Math.cos(angle) * radius;
+          instance.position.y = Math.sin(angle) * radius;
         }
       });
     }

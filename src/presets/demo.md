@@ -8,7 +8,7 @@ Welcome to the next generation of sensory immersion.
 
 ```config
 duration: 10.0
-pattern: spiral
+pattern: antikythera
 patternType: default
 camera: orbit
 patternSpeed: 0.50

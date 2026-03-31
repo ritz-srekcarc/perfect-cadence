@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { TimelineSegment, SegmentConfig, parseSegmentContent, MediaItem, PREBUILT_WORDLISTS } from '../timelineParser';
-import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2, Info, Bold, Italic, Heading1, Heading2, List, ListOrdered, Ear, Timer, Image, Tv, Volume2, Paintbrush, Film, X, Speech, Orbit, Activity, Camera, LayoutGrid, Grid, Layout, Link as LinkIcon, FileUp } from 'lucide-react';
+import { Trash2, Plus, ArrowUp, ArrowDown, Upload, ChevronDown, ChevronRight, Sparkles, Loader2, Info, Bold, Italic, Heading1, Heading2, List, ListOrdered, Ear, Timer, Image, Tv, Volume2, Paintbrush, Film, X, Speech, Orbit, Activity, Camera, LayoutGrid, Grid, Layout, Link as LinkIcon, FileUp, Home, Layers } from 'lucide-react';
 import { transcribeAudio } from '../services/audioAnalysisService';
 import ReactQuill, { Quill } from 'react-quill-new';
 import 'react-quill-new/dist/quill.snow.css';
@@ -631,8 +631,8 @@ const RichTextEditor = ({ markdown, onChange, onOpenMediaBubble, onOpenWordlistB
           <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleFormat('italic')} className={`!w-auto !h-auto p-1 rounded flex items-center justify-center shrink-0 ${activeFormats.italic ? 'text-emerald-400 bg-zinc-800' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`} title="Italic">
             <Italic size={16} />
           </button>
-          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleFormat('blockquote')} className={`!w-auto !h-auto p-1 rounded flex items-center justify-center shrink-0 ${activeFormats.blockquote ? 'text-emerald-400 bg-zinc-800' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`} title="Blockquote">
-            <LayoutGrid size={16} />
+          <button onMouseDown={(e) => e.preventDefault()} onClick={() => handleFormat('blockquote')} className={`!w-auto !h-auto p-1 rounded flex items-center justify-center shrink-0 ${activeFormats.blockquote ? 'text-emerald-400 bg-zinc-800' : 'text-zinc-400 hover:text-white hover:bg-zinc-800'}`} title="Aux Layer">
+            <Layers size={16} />
           </button>
           
           <div className="w-px h-4 bg-zinc-800 mx-1"></div>
@@ -842,7 +842,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
   const getAvailablePatterns = (type: string | undefined) => {
     const valid: Record<string, string[]> = {
       fascinator: ['mandala', 'flame', 'dot', 'flat spiral', 'thicc spiral', 'pendulum', 'wheel', 'dial', 'clock', 'ring', 'kaleido'],
-      repetition: ['grid', 'march', 'helix', 'spiral', 'vortex', 'sphere', 'cube', 'polygon'],
+      repetition: ['grid', 'march', 'helix', 'antikythera', 'vortex', 'sphere', 'cube', 'polygon'],
       cloud: ['particle', 'nebula', 'smoke', 'fluid', 'swarm', 'constellation', 'bubbles'],
       cluster: ['disordered', 'float', 'orbit', 'pulse', 'vortex'],
       topology: ['orb', 'tunnel', 'shaft', 'nautilus spiral', 'cone spiral', 'surface', 'galaxy']
@@ -867,19 +867,39 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
 
   useLayoutEffect(() => {
     if (activeBubble && bubbleRef.current) {
-      const rect = bubbleRef.current.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
+      // Reset any previous margins
+      bubbleRef.current.style.marginTop = '0px';
+      bubbleRef.current.style.marginRight = '0px';
       
-      // Reset any previous transforms
-      bubbleRef.current.style.transform = '';
-      
-      if (rect.bottom > viewportHeight) {
-        const overflow = rect.bottom - viewportHeight + 20; // 20px padding
-        // Ensure we don't push it too far up (off the top of the screen)
-        const maxUpwardShift = rect.top - 20;
-        const shift = Math.min(overflow, maxUpwardShift);
-        if (shift > 0) {
-          bubbleRef.current.style.transform = `translateY(-${shift}px)`;
+      // Only apply dynamic positioning on desktop (sm breakpoint is 640px)
+      if (window.innerWidth >= 640) {
+        const rect = bubbleRef.current.getBoundingClientRect();
+        const viewportHeight = window.innerHeight;
+        const viewportWidth = window.innerWidth;
+        
+        if (rect.top < 20) {
+          // Overflowing the top (e.g. clicked a button at the bottom of a tall segment)
+          const overflowTop = 20 - rect.top;
+          bubbleRef.current.style.marginTop = `${overflowTop}px`;
+        } else if (rect.bottom > viewportHeight) {
+          // Overflowing the bottom
+          const overflowBottom = rect.bottom - viewportHeight + 20; // 20px padding
+          // Ensure we don't push it too far up (off the top of the screen)
+          const maxUpwardShift = rect.top - 20;
+          const shift = Math.min(overflowBottom, maxUpwardShift);
+          if (shift > 0) {
+            bubbleRef.current.style.marginTop = `-${shift}px`;
+          }
+        }
+        
+        // Horizontal check
+        const newRect = bubbleRef.current.getBoundingClientRect();
+        if (newRect.left < 10) {
+          const overflowLeft = 10 - newRect.left;
+          bubbleRef.current.style.marginRight = `-${overflowLeft}px`; 
+        } else if (newRect.right > viewportWidth - 10) {
+          const overflowRight = newRect.right - (viewportWidth - 10);
+          bubbleRef.current.style.marginRight = `${overflowRight}px`;
         }
       }
     }
@@ -1056,7 +1076,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
               className={`p-1 rounded transition-colors ${activeBubble?.type === 'room' ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-400 hover:text-emerald-400 bg-zinc-900'}`}
               title="Room & Horizon Options"
             >
-              <LayoutGrid size={12} />
+              <Home size={12} />
             </button>
           </div>
         </div>
@@ -1082,7 +1102,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
           <div 
             ref={bubbleRef}
             data-bubble-container="true"
-            className="absolute top-12 right-0 z-50 w-96 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200 max-h-[80vh] overflow-y-auto"
+            className="fixed sm:absolute top-1/2 sm:top-12 left-1/2 sm:left-auto right-auto sm:right-0 -translate-x-1/2 -translate-y-1/2 sm:translate-x-0 sm:translate-y-0 z-[100] w-[calc(100vw-2rem)] sm:w-96 bg-zinc-900 border border-zinc-800 rounded-xl shadow-2xl p-4 animate-in fade-in zoom-in duration-200 max-h-[80vh] overflow-y-auto"
           >
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-xs font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
@@ -1097,7 +1117,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                  activeBubble.type === 'image' ? <Image size={14} /> :
                  activeBubble.type === 'video' ? <Tv size={14} /> :
                  activeBubble.type === 'wordlist' ? <Sparkles size={14} /> :
-                 activeBubble.type === 'room' ? <LayoutGrid size={14} /> :
+                 activeBubble.type === 'room' ? <Home size={14} /> :
                  <Timer size={14} />}
                 {activeBubble.isAux !== undefined ? (activeBubble.isAux ? 'Aux ' : 'Text ') : ''}
                 {activeBubble.type === 'style' ? 'Style' : 
@@ -1125,7 +1145,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
               </button>
             </div>
 
-            <div className="grid grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {activeBubble.type === 'style' ? (
                 <>
                   <div className="flex flex-col gap-1 col-span-2">
@@ -1305,7 +1325,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                 </>
               ) : activeBubble.type === 'room' ? (
                 <>
-                  <div className="flex flex-col gap-1 col-span-4 border-b border-zinc-800 pb-2 mb-2">
+                  <div className="flex flex-col gap-1 col-span-2 sm:col-span-4 border-b border-zinc-800 pb-2 mb-2">
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] text-zinc-500 uppercase font-bold">Reference Lines (Room)</label>
                       <input 
@@ -1316,7 +1336,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       />
                     </div>
                     {seg.config.roomEnabled && (
-                      <div className="grid grid-cols-4 gap-3 mt-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
                         <div className="flex flex-col gap-1 col-span-2">
                           <label className="text-[10px] text-zinc-500 uppercase font-bold">Color</label>
                           <input 
@@ -1329,13 +1349,13 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                         <div className="col-span-2">
                           <SliderInput label="Size" value={seg.config.roomSize ?? 100} min={10} max={500} step={10} onChange={(val) => updateConfig(index, 'roomSize', val)} />
                         </div>
-                        <div className="col-span-4">
+                        <div className="col-span-2 sm:col-span-4">
                           <SliderInput label="Intensity" value={seg.config.roomIntensity ?? 0.5} min={0} max={1} step={0.1} onChange={(val) => updateConfig(index, 'roomIntensity', val)} />
                         </div>
                       </div>
                     )}
                   </div>
-                  <div className="flex flex-col gap-1 col-span-4">
+                  <div className="flex flex-col gap-1 col-span-2 sm:col-span-4">
                     <div className="flex items-center justify-between">
                       <label className="text-[10px] text-zinc-500 uppercase font-bold">Horizon</label>
                       <input 
@@ -1346,7 +1366,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       />
                     </div>
                     {seg.config.horizonEnabled && (
-                      <div className="grid grid-cols-4 gap-3 mt-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-2">
                         <div className="flex flex-col gap-1 col-span-2">
                           <label className="text-[10px] text-zinc-500 uppercase font-bold">Color</label>
                           <input 
@@ -1359,7 +1379,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                         <div className="col-span-2">
                           <SliderInput label="Size" value={seg.config.horizonSize ?? 2000} min={500} max={5000} step={100} onChange={(val) => updateConfig(index, 'horizonSize', val)} />
                         </div>
-                        <div className="col-span-4">
+                        <div className="col-span-2 sm:col-span-4">
                           <SliderInput label="Intensity" value={seg.config.horizonIntensity ?? 0.5} min={0} max={1} step={0.1} onChange={(val) => updateConfig(index, 'horizonIntensity', val)} />
                         </div>
                       </div>
@@ -1507,7 +1527,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                           <option value="grid">Grid</option>
                           <option value="march">March</option>
                           <option value="helix">Helix</option>
-                          <option value="spiral">Spiral</option>
+                          <option value="antikythera">Antikythera</option>
                           <option value="vortex">Vortex</option>
                           <option value="sphere">Sphere</option>
                           <option value="cube">Cube</option>
@@ -1665,7 +1685,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                     </>
                   )}
 
-                  <div className="col-span-4">
+                  <div className="col-span-2 sm:col-span-4">
                     <PaletteManager 
                       palette={seg.config.palette || ['#ffffff', '#00ff88', '#0066ff']} 
                       onChange={(newPalette) => updateConfig(index, 'palette', newPalette)} 
@@ -1712,10 +1732,12 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                       
                     const checkLength = (t: string, p: string) =>
                       (t === 'fascinator' && p === 'pendulum') ||
-                      (t === 'topology' && ['tunnel', 'shaft'].includes(p));
+                      (t === 'topology' && ['tunnel', 'shaft'].includes(p)) ||
+                      (t === 'repetition' && ['helix', 'vortex'].includes(p));
                       
                     const checkRadius = (t: string, p: string) =>
-                      (t === 'topology' && ['tunnel', 'shaft'].includes(p));
+                      (t === 'topology' && ['tunnel', 'shaft'].includes(p)) ||
+                      (t === 'repetition' && ['helix', 'vortex', 'antikythera'].includes(p));
                       
                     const checkRoughness = (t: string, p: string) =>
                       (t === 'topology' && ['surface', 'shaft'].includes(p));
@@ -1730,7 +1752,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                     const showRoughness = checkRoughness(type, pattern) || (basePattern && checkRoughness('fascinator', basePattern));
                     const showSpacing = checkSpacing(type, pattern) || (basePattern && checkSpacing('fascinator', basePattern));
 
-                    const isCloudOrTunnel = type === 'cloud' || ['tunnel', 'shaft'].includes(pattern);
+                    const isCloudOrTunnel = type === 'cloud' || ['tunnel', 'shaft', 'helix', 'vortex'].includes(pattern);
 
                     return (
                       <>
@@ -1820,7 +1842,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                     const pattern = getValidPattern(type, seg.config.pattern);
                     const basePattern = type === 'cluster' ? (seg.config.clusterBasePattern || 'dot') :
                                         type === 'repetition' ? (seg.config.repetitionBasePattern || 'dot') : null;
-                    const isSpiral = ['flat spiral', 'thicc spiral'].includes(pattern) || (basePattern && ['flat spiral', 'thicc spiral'].includes(basePattern)) || (type === 'topology' && pattern === 'tunnel');
+                    const isSpiral = ['flat spiral', 'thicc spiral', 'antikythera', 'helix', 'vortex'].includes(pattern) || (basePattern && ['flat spiral', 'thicc spiral'].includes(basePattern)) || (type === 'topology' && pattern === 'tunnel');
                     
                     if (!isSpiral) return null;
                     return (
@@ -1997,7 +2019,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   </div>
                 </>
               ) : (activeBubble.type === 'image' || activeBubble.type === 'video') ? (
-                <div className="col-span-4 flex flex-col gap-3">
+                <div className="col-span-2 sm:col-span-4 flex flex-col gap-3">
                   {(() => {
                     const m = media[activeBubble.index ?? 0];
                     if (!m) return <div className="text-zinc-500 text-xs italic">Item not found</div>;
@@ -2031,7 +2053,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   })()}
                 </div>
               ) : activeBubble.type === 'wordlist' ? (
-                <div className="col-span-4 flex flex-col gap-3">
+                <div className="col-span-2 sm:col-span-4 flex flex-col gap-3">
                   {(() => {
                     const wl = wordlists[activeBubble.index ?? 0];
                     if (!wl) return <div className="text-zinc-500 text-xs italic">Item not found</div>;
@@ -2092,7 +2114,7 @@ function SegmentEditor({ seg, index, totalSegments, updateConfig, updateConfigs,
                   })()}
                 </div>
               ) : (
-                <div className="col-span-4">
+                <div className="col-span-2 sm:col-span-4">
                   <SliderInput
                     label="Metronome (BPM)"
                     min={0}
